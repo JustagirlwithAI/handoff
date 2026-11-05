@@ -1,0 +1,8 @@
+node_modules/
+certs/
+.env
+.session-key
+
+.vercel
+vercel-env.txt
+.claude/

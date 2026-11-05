@@ -1,0 +1,21 @@
+{
+  "name": "app-client-starter-app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal Buffer OAuth (PKCE) app: list connected channels and add a draft post to a queue",
+  "scripts": {
+    "start": "node server.js",
+    "certs": "node scripts/generate-cert.js",
+    "test": "node --test",
+    "lint": "node --check server.js && node --check api/index.js && node --check lib/app.js && node --check lib/buffer.js && node --check lib/config.js && node --check lib/session.js && node --check lib/db.js && node --check lib/crypto.js && node --check lib/cloudinary.js && node --check lib/ideas.js && node --check public/app.js && node --check public/client.js"
+  },
+  "engines": {
+    "node": "22.x"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.2.0",
+    "express": "^4.21.2",
+    "iron-session": "^9.0.1"
+  }
+}

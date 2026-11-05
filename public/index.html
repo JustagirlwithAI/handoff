@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Draft Queue</title>
+    <link rel="icon" href="/logo.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M4 7h16" /><path d="M4 12h10" /><path d="M4 17h6" />
+          </svg>
+        </div>
+        <div>
+          <h1>Draft Queue</h1>
+          <p class="sub">List the channels connected to your Buffer account, and add a draft post to one of their queues.</p>
+        </div>
+      </header>
+
+      <div id="banner" class="banner" hidden></div>
+
+      <section id="connect" hidden>
+        <h2>Connect your account</h2>
+        <p>Draft Queue needs your permission before it can read your channels or create a draft post.</p>
+        <a class="btn" href="/auth/login">Connect Buffer</a>
+      </section>
+
+      <section id="app" hidden>
+        <div class="who">
+          <span class="dot" aria-hidden="true"></span>
+          <span id="account"></span>
+          <button id="logout" class="link">Sign out</button>
+        </div>
+        <p id="grant" class="hint" hidden></p>
+
+        <h2>Your clients</h2>
+        <p class="hint">Each client gets a private link. They can open it with no login.</p>
+        <form id="client-form">
+          <label>
+            Client name
+            <input id="client-name" type="text" maxlength="80" required placeholder="e.g. Sunrise Bakery" />
+          </label>
+          <button id="client-add" class="btn" type="submit">Create client link</button>
+        </form>
+        <div id="client-link" class="result" hidden></div>
+        <ul id="client-list" class="clients"></ul>
+
+        <h2>Test: add a draft post</h2>
+        <form id="form">
+          <label>
+            Organization
+            <select id="organization" required></select>
+          </label>
+
+          <label>
+            Channel
+            <select id="channel" required></select>
+          </label>
+
+          <label>
+            Post text
+            <textarea id="text" rows="5" required placeholder="What do you want to say?"></textarea>
+          </label>
+
+          <label>
+            <span>Media URL <span class="opt">optional</span></span>
+            <input id="media" type="url" placeholder="https://example.com/photo.jpg" />
+            <span id="media-hint" class="hint" hidden></span>
+          </label>
+
+          <button id="submit" class="btn" type="submit">Add draft to queue</button>
+        </form>
+
+        <div id="result" class="result" hidden></div>
+
+        <h2>Day 1 test: Notes</h2>
+        <p class="hint">Creates a throwaway draft on the selected channel (it is never published), then tries to add a Buffer Note to it. Delete the draft afterwards in Buffer.</p>
+        <button id="note-test" class="btn" type="button">Test Notes on a draft</button>
+        <div id="note-result" class="result" hidden></div>
+      </section>
+
+      <footer class="colophon">An example third-party app built on the Buffer API, created and maintained by the Buffer team. Not an official product.</footer>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
