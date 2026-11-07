@@ -119,7 +119,38 @@ function shareRow(share, reload, hideFeedback) {
   if (share.status !== 'waiting' && share.noteSaved === false) {
     item.append(el('div', 'hint', 'Saved here, but the Buffer Note could not be added.'))
   }
+  if (share.status !== 'approved') item.append(updateControl(share, reload))
   return item
+}
+
+// After the manager revises the post in Buffer: show the client the new version
+// and ask them again. One optional line tells them what changed.
+function updateControl(share, reload) {
+  const wrap = el('div', 'update')
+  const label = share.status === 'changes' ? 'Send updated version' : 'Refresh from Buffer'
+  const start = button(label, 'link', () => {
+    const note = el('input')
+    note.type = 'text'
+    note.maxLength = 300
+    note.placeholder = 'What changed? (optional, the client will see it)'
+    note.setAttribute('aria-label', 'Note to the client')
+    const send = button('Send', 'btn', async () => {
+      send.disabled = true
+      showError('')
+      try {
+        await api(`/api/shares/${share.id}/refresh`, { method: 'POST', body: JSON.stringify({ note: note.value }) })
+        await reload()
+      } catch (err) {
+        showError(err.message)
+        send.disabled = false
+      }
+    })
+    const cancel = button('Cancel', 'link', () => wrap.replaceChildren(start))
+    wrap.replaceChildren(note, send, cancel)
+    note.focus()
+  })
+  wrap.append(start)
+  return wrap
 }
 
 // "Share a draft by hand": the fallback for drafts Handoff did not match itself.

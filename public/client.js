@@ -85,7 +85,17 @@ function reviewCard(share) {
   const body = document.createElement('p')
   body.className = 'post-text'
   body.textContent = share.post.text || '(No text)'
-  card.append(head, body)
+  // After a revision, say what changed so the client knows what to look at.
+  card.append(head)
+  if (share.updated && share.status === 'waiting') {
+    const update = document.createElement('p')
+    update.className = 'update-note'
+    update.textContent = share.managerNote
+      ? `Updated version. From your manager: ${share.managerNote}`
+      : 'Updated version. Please take another look.'
+    card.append(update)
+  }
+  card.append(body)
 
   // When it is planned to go out, so the client can judge the timing too.
   const when = document.createElement('p')
