@@ -143,6 +143,15 @@ function reviewCard(share) {
     try {
       await post(`/shares/${encodeURIComponent(share.id)}/decision`, { decision, comment: comment.value })
       await loadReviews()
+      if (decision === 'approved') {
+        showReviewNote('Approved. Thank you! Your manager has been told.')
+        // Nothing left to decide? Take them straight to sending something new.
+        if (!$('review-list').querySelector(':scope > .card')) {
+          $('welcome').scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      } else {
+        showReviewNote('Sent. Your manager will see your changes.')
+      }
     } catch (err) {
       message.className = 'result bad'
       message.textContent = err.message
@@ -154,7 +163,17 @@ function reviewCard(share) {
   changes.addEventListener('click', () => decide('changes'))
   actions.append(approve, changes)
   card.append(comment, actions, message)
-  return card
+
+  // Once approved, the post folds away into one line so the page can focus on
+  // what still needs an answer. Tapping the line opens it again.
+  if (share.status !== 'approved') return card
+  const folded = document.createElement('details')
+  folded.className = 'folded'
+  const line = document.createElement('summary')
+  const preview = (share.post.text || '').replace(/\s+/g, ' ').slice(0, 60)
+  line.textContent = `✓ Approved · ${[share.post.service, preview].filter(Boolean).join(' · ')}`
+  folded.append(line, card)
+  return folded
 }
 
 async function loadReviews() {
@@ -162,7 +181,24 @@ async function loadReviews() {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Could not load your posts.')
   $('review').hidden = data.shares.length === 0
-  $('review-list').replaceChildren(...data.shares.map(reviewCard))
+  // Posts that still need an answer first, approved ones last.
+  const order = { waiting: 0, changes: 1, approved: 2 }
+  const shares = [...data.shares].sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3))
+  $('review-list').replaceChildren(...shares.map(reviewCard))
+
+  const open = shares.filter((s) => s.status !== 'approved').length
+  $('review-sub').textContent = open
+    ? `You have ${open} post${open > 1 ? 's' : ''} to look at.`
+    : 'You are all caught up. Approved posts are folded away below.'
+}
+
+let noteTimer
+function showReviewNote(message) {
+  const note = $('review-note')
+  note.textContent = message
+  note.hidden = false
+  clearTimeout(noteTimer)
+  noteTimer = setTimeout(() => { note.hidden = true }, 6000)
 }
 
 async function start() {

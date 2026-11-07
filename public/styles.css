@@ -297,3 +297,8 @@ select:focus-visible, input:focus-visible, textarea:focus-visible {
 .share-hand { margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
 .share-hand select { flex: 1; min-width: 12rem; }
 a.btn { display: inline-block; text-decoration: none; }
+
+/* Approved posts fold into one line */
+details.folded { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); margin: 0.6rem 0; padding: 0.6rem 1rem; }
+details.folded > summary { cursor: pointer; color: var(--ok); font-weight: 600; }
+details.folded > .card { margin: 0.75rem 0 0; border: 0; padding: 0; }
