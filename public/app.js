@@ -98,19 +98,11 @@ function chip(status, count) {
   return el('span', `badge ${status}`, `${count} ${STATUS_LABEL[status].toLowerCase()}`)
 }
 
-function shareRow(share, reload) {
+function shareRow(share, reload, hideFeedback) {
   const item = el('li')
-  const body = el('div')
-  body.append(
+  const top = el('div', 'row')
+  top.append(
     el('span', `badge ${share.status}`, STATUS_LABEL[share.status] || share.status),
-    el('div', 'hint', `[${share.service}] ${share.text.replace(/\s+/g, ' ').slice(0, 90)}`),
-  )
-  if (share.feedback) body.append(el('div', 'feedback', `"${share.feedback}"`))
-  if (share.status !== 'waiting' && share.noteSaved === false) {
-    body.append(el('div', 'hint', 'Saved here, but the Buffer Note could not be added.'))
-  }
-  item.append(
-    body,
     button('Remove', 'link', async () => {
       if (!confirm('Stop sharing this post with the client?')) return
       try {
@@ -121,6 +113,12 @@ function shareRow(share, reload) {
       }
     }),
   )
+  item.append(top, el('div', 'hint', `[${share.service}] ${share.text.replace(/\s+/g, ' ').slice(0, 90)}`))
+  // The newest change request is already shown at the top of the card.
+  if (share.feedback && !hideFeedback) item.append(el('div', 'feedback', `"${share.feedback}"`))
+  if (share.status !== 'waiting' && share.noteSaved === false) {
+    item.append(el('div', 'hint', 'Saved here, but the Buffer Note could not be added.'))
+  }
   return item
 }
 
@@ -182,7 +180,7 @@ function clientCard(client, reload, openName) {
   const body = el('div', 'client-body')
   if (client.shares.length) {
     const list = el('ul', 'board')
-    list.append(...client.shares.map((s) => shareRow(s, reload)))
+    list.append(...client.shares.map((s) => shareRow(s, reload, s === latest)))
     body.append(list)
   }
 

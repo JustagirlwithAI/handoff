@@ -170,7 +170,8 @@ function reviewCard(share) {
   const folded = document.createElement('details')
   folded.className = 'folded'
   const line = document.createElement('summary')
-  const preview = (share.post.text || '').replace(/\s+/g, ' ').slice(0, 60)
+  const flat = (share.post.text || '').replace(/\s+/g, ' ').trim()
+  const preview = flat.length > 60 ? `${flat.slice(0, 59).trimEnd()}…` : flat
   line.textContent = `✓ Approved · ${[share.post.service, preview].filter(Boolean).join(' · ')}`
   folded.append(line, card)
   return folded
