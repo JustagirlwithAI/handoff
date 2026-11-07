@@ -1,9 +1,9 @@
 {
-  "name": "app-client-starter-app",
+  "name": "handoff",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Minimal Buffer OAuth (PKCE) app: list connected channels and add a draft post to a queue",
+  "description": "Handoff: client content submissions and approvals for Buffer",
   "scripts": {
     "start": "node server.js",
     "certs": "node scripts/generate-cert.js",

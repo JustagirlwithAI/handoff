@@ -1,96 +1,70 @@
-# Draft Queue: a Buffer app client example
+# Handoff
 
-A small, runnable example of a third-party app built on the [Buffer API](https://developers.buffer.com).
+**Client content in. Client approvals out. All through Buffer.**
 
-## What it does
+Handoff is a small web app for social media managers who work with clients. The manager signs in with Buffer and creates a private link for each client. Through that link, with no login, the client can:
 
-It's a small starter app called Draft Queue which covers key components of an app client:
+1. **Send content**: text, photos, details and timing. It arrives in the manager's Buffer as an **Idea tagged with the client's name**.
+2. **Review posts**: when the manager turns that Idea into a draft in Buffer, it appears on the client's page automatically. The client sees how it will look, then **approves it or requests changes**. Their answer is saved as a **Note on the post in Buffer**.
 
-1. A user connects their own Buffer account over OAuth 2.0 (Authorization Code + PKCE).
-2. The app lists the channels in their Buffer organization.
-3. The user picks a channel, and the app creates a **draft** post in that channel's queue.
+The manager gets one simple screen showing, per client, what is waiting, approved, or needs changes. She also gets a **push notification** when a client approves, asks for changes, or sends something new.
 
-   ![Draft Queue demo: connecting a Buffer account, picking a channel, and adding a draft post to its queue](docs/draft-queue-demo.gif)
+Live: https://handoff-nine-lemon.vercel.app
 
-Use it as a starting point for your own integration. Clone it, configure it with your own app client, build new features on top, or share it with your AI coding agent as a reference.
+## How it uses Buffer
 
-## Prerequisites
+| Feature | Buffer API |
+| --- | --- |
+| Sign in | OAuth 2.0 authorization code flow with PKCE (App Client), with refresh-token rotation |
+| Client submission | `createIdea` (with tags and media), `createTag`, `tagsV2` |
+| Reading drafts | `posts` filtered by `draft` / `needs_approval` |
+| Client feedback | `createCollaborationNote` on the post |
 
-- Node.js 22
-- A [Buffer](https://buffer.com) account
-- A Buffer app client (client ID and secret). See the [authentication guide](https://developers.buffer.com/guides/authentication.html) for how to register one.
-- (Optional) Vercel or another hosting provider, if you want to deploy the app
+The scopes requested are `account:read posts:read posts:write ideas:read ideas:write notes:read notes:write offline_access`.
 
-## Setup
+## Design decisions
 
-1. From the root of the repository, move into this sample:
+- **The client's link is the only credential.** Links are 256 bits of randomness. Only a SHA-256 fingerprint is stored, so a leaked database does not leak working links. A link can be replaced at any time, which kills the old one. A client's page only ever shows that client's posts.
+- **The manager's Buffer connection lives on the server, encrypted** (AES-256-GCM), because clients who are not signed in need the app to act for the manager. Buffer refresh tokens are single-use, so a database lock lets exactly one request renew them at a time.
+- **Opening a client page costs no Buffer API calls.** A copy of each shared post is stored when it is shared, and new drafts are looked up at most once a minute. App Clients have a small shared rate limit, so this matters.
+- **Matching drafts to clients is automatic but cautious.** Buffer does not record which Idea a post came from, so Handoff matches by the client's tag, then by what the client wrote. If it is not certain, it does nothing and the manager can share the draft by hand.
+- **Buffer's Free plan allows 3 tags.** Clients get their own tag while slots remain. Every Idea also starts with the client's name in its title, so nothing is lost after the tags run out.
+- **Feedback is stored twice.** It goes to Buffer as a Note and is also kept in Handoff's database, so it is never lost if Buffer is unavailable (Notes are experimental).
+- **Post metrics are not used**: they are not available to App Clients.
 
-   ```bash
-   cd samples/app-client-starter-app
-   ```
+## Stack
 
-2. Install dependencies:
+Node.js 22+ and Express (from Buffer's `app-client-starter-app`), Neon Postgres, Cloudinary for photos, Vercel for hosting, and the Web Push API for notifications. The front end is plain HTML and JavaScript with no build step.
 
-   ```bash
-   npm install
-   ```
+## Run it locally
 
-3. Create your environment file:
+You need Node.js 22+, a Buffer account, a free Neon database and a free Cloudinary account.
 
-   ```bash
-   cp .env.example .env
-   ```
+1. Create an App Client at <https://publish.buffer.com/settings/api> (private client). Add `https://localhost:3000/callback` as a redirect URI.
+2. `npm install`
+3. Copy `.env.example` to `.env` and fill it in: Buffer client ID and secret, `DATABASE_URL`, and the three `CLOUDINARY_*` values.
+4. `npm start`, then open <https://localhost:3000> and accept the self-signed certificate once. Buffer requires https, so the dev server makes its own certificate.
 
-   Then fill in the values:
+`npm test` runs the tests. Tests that need the database skip themselves if `DATABASE_URL` is not set.
 
-   | Variable | Purpose |
-   | --- | --- |
-   | `BUFFER_CLIENT_ID` | Your app client ID from Buffer. |
-   | `BUFFER_CLIENT_SECRET` | Required for a confidential client. Never expose it to the browser or commit it. |
-   | `SESSION_SECRET` | At least 32 characters. Generate one with `openssl rand -hex 32`. Optional locally, required in production. |
-   | `REDIRECT_URI` | It must exactly match the redirect URI registered for your app client. |
-   | `PORT` | Port your app is running on locally. Should match the port specified in the `REDIRECT_URI`.
+## Deploy to Vercel
 
-5. Generate a self-signed certificate for local HTTPS:
-
-   ```bash
-   npm run certs
-   ```
-
-   Buffer doesn't accept `http://localhost` redirect URIs, so the dev server runs over HTTPS. If you skip this step, `npm start` generates the certificate on first run.
-
-6. Run the app locally:
-
-   ```bash
-   npm start
-   ```
-
-   Open `https://localhost:3000` and accept the self-signed development certificate in your browser.
+Import the repository with the framework preset **Other** and set the same environment variables, plus a `SESSION_SECRET` (at least 32 characters; it also derives the token encryption key). Add `https://YOUR-DOMAIN/callback` as a second redirect URI in your Buffer App Client.
 
 ## Project structure
 
 | Path | What it holds |
 | --- | --- |
-| `lib/` | The app itself: OAuth and GraphQL (`buffer.js`), the session cookie (`session.js`), Express routes (`app.js`), and configuration (`config.js`). |
-| `public/` | The single-page UI. |
-| `server.js` | Local HTTPS dev server. |
-| `api/index.js`, `vercel.json` | Serverless entry point and routing, using Vercel as an example host. |
-| `test/` | Regression tests for the protocol and security-critical helpers. |
-| `docs/` | The demo GIF used in this README. |
-| `scripts/` | Generates the self-signed certificate for local HTTPS. |
+| `lib/app.js` | Express routes: manager side, and the no-login client side |
+| `lib/buffer.js` | OAuth, GraphQL requests, rate-limit handling, token renewal |
+| `lib/db.js` | Database tables and queries, private-link tokens |
+| `lib/ideas.js` | Turns a client submission into a tagged Buffer Idea |
+| `lib/approvals.js` | Reads drafts, matches them to clients, writes decisions as Notes |
+| `lib/push.js` | Push notifications |
+| `lib/crypto.js`, `lib/cloudinary.js` | Token encryption; signed photo uploads |
+| `public/` | The dashboard (`index.html`), the client page (`client.html`), service worker |
+| `test/` | Tests for the security-sensitive parts |
 
-## What this example covers
+## Credits
 
-- **OAuth 2.0 with PKCE:** the full Authorization Code flow with PKCE. It sends the user to Buffer to authorize the app, handles the redirect back, and exchanges the authorization code for tokens. See `lib/buffer.js`.
-- **GraphQL requests:** authenticated calls to the Buffer GraphQL API. The app reads the user's organization and channels, then runs a mutation that creates a draft post in a channel's queue.
-- **Refresh tokens:** the app requests the `offline_access` scope, so Buffer returns a refresh token alongside the access token. When the access token expires, the app renews it without asking the user to sign in again. Both tokens are sealed inside an HttpOnly cookie, so browser JavaScript can never read them.
-- **Handling rate limits:** rate limits apply per app client, so every user of the app shares one quota. When Buffer responds with HTTP 429, the app reads the `Retry-After` header. If the wait is 5 seconds or less, it waits and retries the request once. Otherwise it returns the error to the user with the wait time. See `graphql()` in `lib/buffer.js`.
-- **Deployment:** a working setup for Vercel (`api/index.js` and `vercel.json`) shows how to run the same app as a serverless deployment. If you deploy from this repository, set the project's root directory to `samples/app-client-starter-app`. You can adapt it to any Node.js host.
-
-## Support and contributing
-
-This sample is provided as-is for educational purposes and isn't covered by Buffer's product support or service-level agreements. If you find a bug or something out of date, please [open an issue](../../../../issues). See [CONTRIBUTING.md](../../CONTRIBUTING.md) for how we handle contributions.
-
-## License
-
-This sample is licensed under the MIT License. See the [LICENSE](../../LICENSE) file at the root of the repository.
+Built from Buffer's [app-client-starter-app](https://github.com/bufferapp/buffer-sample-apps/tree/main/samples/app-client-starter-app) (MIT license). Handoff is an independent project and not an official Buffer product.

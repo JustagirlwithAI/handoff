@@ -3,17 +3,43 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Draft Queue privacy</title>
+    <title>Handoff privacy</title>
+    <link rel="icon" href="/logo.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main>
-      <header><div><h1>Privacy</h1><p class="sub">How this sample app handles data.</p></div></header>
+      <header><div><h1>Privacy</h1><p class="sub">What Handoff stores, and why.</p></div></header>
+
       <section>
-        <p>Draft Queue uses Buffer OAuth only to read the connected account's organizations and channels and to create a draft requested by the user.</p>
-        <p>Access tokens are kept in an encrypted, HTTP-only session cookie and are not exposed to browser JavaScript. This sample does not use analytics, sell personal data, or persist Buffer data in an application database.</p>
-        <p>Disconnecting clears the local session. For questions about a deployment of this sample, contact that deployment's operator.</p>
+        <h2>For social media managers</h2>
+        <p>You sign in with Buffer using OAuth. Handoff never sees your Buffer password.</p>
+        <p>Handoff asks Buffer for these permissions, and uses them only for the reasons below:</p>
+        <ul>
+          <li><strong>Account</strong>: to know who you are and which organization to use.</li>
+          <li><strong>Ideas</strong>: to create an Idea in your Buffer when a client sends content.</li>
+          <li><strong>Posts</strong>: to read your drafts so clients can review them, and to create a tag with each client's name.</li>
+          <li><strong>Notes</strong>: to add a client's approval or change request to the post in Buffer.</li>
+          <li><strong>Offline access</strong>: so Handoff can keep working for your clients while you are away.</li>
+        </ul>
+        <p>Your Buffer access and refresh tokens are stored encrypted in Handoff's database. You can remove Handoff's access at any time in Buffer's settings.</p>
       </section>
+
+      <section>
+        <h2>For clients</h2>
+        <p>You use a private link and no account. Handoff stores what you send: your name as your manager entered it, the text, details and timing you submit, links to any photos you upload, and your approvals and comments.</p>
+        <p>Photos are stored with Cloudinary. Your content is passed to your manager's Buffer account, which is where it becomes a draft or post.</p>
+        <p>Anyone who has your private link can use that page, so please keep it to yourself. Your manager can replace your link at any time, which stops the old one working.</p>
+      </section>
+
+      <section>
+        <h2>Everyone</h2>
+        <p>Handoff uses no analytics or advertising and does not sell personal data. If a manager turns on notifications, their browser's notification address is stored so alerts can be delivered.</p>
+        <p>Handoff relies on these services to run: Buffer, Vercel (hosting), Neon (database) and Cloudinary (photos).</p>
+        <p>When a manager deletes a client, that client's submissions and approvals are deleted from Handoff. Photos already uploaded stay with Cloudinary until removed there, and anything already created in Buffer stays in Buffer.</p>
+        <p>Handoff is an independent app built for the Buffer Commit contest. It is not an official Buffer product. For questions or deletion requests, contact the person who runs this deployment.</p>
+      </section>
+      <p><a href="/">Back to Handoff</a></p>
     </main>
   </body>
 </html>
