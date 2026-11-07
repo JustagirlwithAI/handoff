@@ -7,7 +7,7 @@ Handoff is a small web app for social media managers who work with clients. The 
 1. **Send content**: text, photos, details and timing. It arrives in the manager's Buffer as an **Idea tagged with the client's name**.
 2. **Review posts**: when the manager turns that Idea into a draft in Buffer, it appears on the client's page automatically. The client sees how it will look, then **approves it or requests changes**. Their answer is saved as a **Note on the post in Buffer**.
 
-The manager gets one simple screen showing, per client, what is waiting, approved, or needs changes. She also gets a **push notification** when a client approves, asks for changes, or sends something new.
+The manager gets one simple screen showing, per client, what is waiting, approved, or needs changes. She also gets a **push notification** when a client approves, asks for changes, or sends something new. Clients can turn on notifications too, so they hear when a post is ready or a revised version is waiting, with no chat app or email involved. After revising a post in Buffer, the manager clicks **Send updated version** to put the new version in front of the client.
 
 Live: https://handoff-nine-lemon.vercel.app
 

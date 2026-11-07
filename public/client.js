@@ -212,6 +212,74 @@ function showReviewNote(message) {
   noteTimer = setTimeout(() => { note.hidden = true }, 6000)
 }
 
+/* --------------------------------------------------------- notifications */
+// So the client hears about a new or updated post without needing any chat app
+// or email: one tap here, and their device shows a notification when it is ready.
+
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+
+function keyToBytes(base64url) {
+  const padded = base64url + '='.repeat((4 - (base64url.length % 4)) % 4)
+  const raw = atob(padded.replace(/-/g, '+').replace(/_/g, '/'))
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0))
+}
+
+async function setupNotifications() {
+  const box = $('notify')
+  const text = $('notify-text')
+  const toggle = $('notify-toggle')
+  box.hidden = false
+
+  if (!pushSupported()) {
+    text.textContent = 'To get a notification when a post is ready, open this page from your browser on a computer or Android phone. On an iPhone, tap Share and choose Add to Home Screen first.'
+    toggle.hidden = true
+    return
+  }
+
+  const registration = await navigator.serviceWorker.register('/sw.js')
+  // Lets a tapped notification bring them back to this page.
+  const ready = await navigator.serviceWorker.ready
+  ready.active?.postMessage({ type: 'client-path', path: location.pathname })
+
+  const render = async () => {
+    const current = await registration.pushManager.getSubscription()
+    const blocked = Notification.permission === 'denied'
+    toggle.hidden = blocked
+    toggle.disabled = false
+    if (blocked) text.textContent = 'Notifications are blocked for this site. Allow them in your browser settings, then reload this page.'
+    else if (current) text.textContent = '🔔 You will get a notification when a post is ready.'
+    else text.textContent = 'Want a heads-up when a post is ready for you? Turn on notifications.'
+    toggle.textContent = current ? 'Turn off' : 'Notify me'
+    toggle.className = current ? 'link' : 'btn'
+  }
+
+  toggle.addEventListener('click', async () => {
+    toggle.disabled = true
+    try {
+      const current = await registration.pushManager.getSubscription()
+      if (current) {
+        await post('/push/off', { endpoint: current.endpoint })
+        await current.unsubscribe()
+      } else {
+        if ((await Notification.requestPermission()) !== 'granted') return
+        const keyRes = await fetch(api('/push-key'))
+        const { publicKey } = await keyRes.json()
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: keyToBytes(publicKey),
+        })
+        await post('/push', subscription.toJSON())
+      }
+    } catch (err) {
+      showBanner(`Could not change notifications: ${err.message}`)
+    } finally {
+      await render()
+    }
+  })
+
+  await render()
+}
+
 async function start() {
   const res = await fetch(api(''))
   const body = await res.json().catch(() => ({}))
@@ -225,6 +293,7 @@ async function start() {
   document.title = `Handoff · ${body.client.name}`
   $('photo-label').hidden = !body.photosEnabled
   $('welcome').hidden = false
+  setupNotifications().catch(() => { $('notify').hidden = true })
   await loadReviews().catch(() => {})
 }
 

@@ -62,11 +62,28 @@ function showLink(name, link) {
       copy.textContent = 'Press Ctrl+C to copy'
     }
   })
+  const buttons = [copy]
+  // The phone's or computer's own share menu: WhatsApp, Telegram, Slack, email,
+  // whatever the client prefers. Handoff does not pick an app for you.
+  if (navigator.share) {
+    buttons.push(button('Share…', 'btn secondary', async () => {
+      try {
+        await navigator.share({
+          title: 'Your Handoff page',
+          text: `Hi ${name}, here is your private page. You can send me content and approve posts there, with no account needed:`,
+          url: link,
+        })
+      } catch {
+        // They closed the share menu: nothing to do.
+      }
+    }))
+  }
   box.replaceChildren(
-    document.createTextNode(`Private link for ${name}. Copy it now: it can't be shown again, but you can always make a new one.`),
+    document.createTextNode(`Private link for ${name}. Copy or share it now: it can't be shown again, but you can always make a new one.`),
     input,
-    copy,
+    el('div', 'actions'),
   )
+  box.lastChild.append(...buttons)
   box.hidden = false
 }
 
