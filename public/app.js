@@ -240,6 +240,84 @@ async function loadOverview() {
   }
 }
 
+/* --------------------------------------------------------- notifications */
+// Notifications come from the browser's own push system, so they appear even when
+// Handoff is closed. Each browser or phone is turned on separately.
+
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+
+function keyToBytes(base64url) {
+  const padded = base64url + '='.repeat((4 - (base64url.length % 4)) % 4)
+  const raw = atob(padded.replace(/-/g, '+').replace(/_/g, '/'))
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0))
+}
+
+async function setupNotifications() {
+  const box = $('notify')
+  const text = $('notify-text')
+  const toggle = $('notify-toggle')
+  const test = $('notify-test')
+  box.hidden = false
+
+  if (!pushSupported()) {
+    text.textContent = 'This browser cannot show notifications. On an iPhone: tap Share, choose Add to Home Screen, then open Handoff from your Home Screen.'
+    toggle.hidden = true
+    return
+  }
+
+  const registration = await navigator.serviceWorker.register('/sw.js')
+  const render = async () => {
+    const current = await registration.pushManager.getSubscription()
+    const blocked = Notification.permission === 'denied'
+    test.hidden = !current
+    toggle.hidden = blocked
+    toggle.disabled = false
+    if (blocked) text.textContent = 'Notifications are blocked for this site. Allow them in your browser settings (the lock icon by the address), then reload.'
+    else if (current) text.textContent = '🔔 Notifications are on for this device.'
+    else text.textContent = 'Get a notification when a client approves, asks for changes, or sends content.'
+    toggle.textContent = current ? 'Turn off' : 'Turn on notifications'
+    toggle.className = current ? 'link' : 'btn'
+  }
+
+  toggle.addEventListener('click', async () => {
+    toggle.disabled = true
+    showError('')
+    try {
+      const current = await registration.pushManager.getSubscription()
+      if (current) {
+        await api('/api/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint: current.endpoint }) })
+        await current.unsubscribe()
+      } else {
+        if ((await Notification.requestPermission()) !== 'granted') return
+        const { publicKey } = await api('/api/push/key')
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: keyToBytes(publicKey),
+        })
+        await api('/api/push/subscribe', { method: 'POST', body: JSON.stringify(subscription.toJSON()) })
+      }
+    } catch (err) {
+      showError(`Could not change notifications: ${err.message}`)
+    } finally {
+      await render()
+    }
+  })
+
+  test.addEventListener('click', async () => {
+    test.disabled = true
+    try {
+      const { sent } = await api('/api/push/test', { method: 'POST' })
+      showError(sent ? '' : 'The test notification did not go through. Try turning notifications off and on again.')
+    } catch (err) {
+      showError(err.message)
+    } finally {
+      test.disabled = false
+    }
+  })
+
+  await render()
+}
+
 async function start() {
   const session = await api('/api/session')
   if (!session.connected) {
@@ -249,6 +327,7 @@ async function start() {
   $('app').hidden = false
   const { account } = session
   $('account').textContent = `Signed in as ${account.name || account.email}`
+  setupNotifications().catch(() => { $('notify').hidden = true })
   await loadOverview()
   // Stay current while the dashboard is open.
   setInterval(() => { if (!document.hidden) loadOverview() }, 60_000)

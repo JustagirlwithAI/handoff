@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Handoff</title>
     <link rel="icon" href="/logo.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <meta name="theme-color" content="#283f3e" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -40,6 +43,12 @@
           <span class="dot" aria-hidden="true"></span>
           <span id="account"></span>
           <button id="logout" class="link">Sign out</button>
+        </div>
+
+        <div id="notify" class="notify" hidden>
+          <span id="notify-text"></span>
+          <button id="notify-toggle" class="btn" type="button"></button>
+          <button id="notify-test" class="link" type="button" hidden>Send a test</button>
         </div>
 
         <form id="client-form" class="inline-form">
