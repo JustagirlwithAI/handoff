@@ -8,7 +8,7 @@
     "start": "node server.js",
     "certs": "node scripts/generate-cert.js",
     "test": "node --test",
-    "lint": "node --check server.js && node --check api/index.js && node --check lib/app.js && node --check lib/buffer.js && node --check lib/config.js && node --check lib/session.js && node --check lib/db.js && node --check lib/crypto.js && node --check lib/cloudinary.js && node --check lib/ideas.js && node --check public/app.js && node --check public/client.js"
+    "lint": "node --check server.js && node --check api/index.js && node --check lib/app.js && node --check lib/buffer.js && node --check lib/config.js && node --check lib/session.js && node --check lib/db.js && node --check lib/crypto.js && node --check lib/cloudinary.js && node --check lib/ideas.js && node --check lib/approvals.js && node --check public/app.js && node --check public/client.js"
   },
   "engines": {
     "node": "22.x"

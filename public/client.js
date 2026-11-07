@@ -60,6 +60,102 @@ function showResult(ok, message) {
   box.hidden = false
 }
 
+/* ------------------------------------------------------------- reviewing */
+
+const STATUS_TEXT = {
+  waiting: 'Waiting for your answer',
+  approved: 'You approved this',
+  changes: 'You asked for changes',
+}
+
+function reviewCard(share) {
+  const card = document.createElement('div')
+  card.className = 'card'
+
+  const head = document.createElement('div')
+  head.className = 'card-head'
+  const where = document.createElement('span')
+  where.className = 'hint'
+  where.textContent = [share.post.service, share.post.channel].filter(Boolean).join(' · ')
+  const badge = document.createElement('span')
+  badge.className = `badge ${share.status}`
+  badge.textContent = STATUS_TEXT[share.status] || share.status
+  head.append(where, badge)
+
+  const body = document.createElement('p')
+  body.className = 'post-text'
+  body.textContent = share.post.text || '(No text)'
+  card.append(head, body)
+
+  if (share.post.images?.length) {
+    const images = document.createElement('div')
+    images.className = 'images'
+    for (const image of share.post.images) {
+      if (!/^https:\/\//i.test(image.url)) continue
+      const img = document.createElement('img')
+      img.src = image.url
+      img.alt = ''
+      img.loading = 'lazy'
+      img.referrerPolicy = 'no-referrer'
+      images.append(img)
+    }
+    card.append(images)
+  }
+
+  if (share.feedback) {
+    const said = document.createElement('p')
+    said.className = 'feedback'
+    said.textContent = `Your note: "${share.feedback}"`
+    card.append(said)
+  }
+
+  const comment = document.createElement('textarea')
+  comment.rows = 3
+  comment.maxLength = 1000
+  comment.placeholder = 'What should change? (required for "Request changes", optional for "Approve")'
+  const message = document.createElement('div')
+  message.className = 'result'
+  message.hidden = true
+
+  const actions = document.createElement('div')
+  actions.className = 'actions'
+  const approve = document.createElement('button')
+  approve.type = 'button'
+  approve.className = 'btn'
+  approve.textContent = 'Approve'
+  const changes = document.createElement('button')
+  changes.type = 'button'
+  changes.className = 'btn secondary'
+  changes.textContent = 'Request changes'
+
+  const decide = async (decision) => {
+    approve.disabled = changes.disabled = true
+    message.hidden = true
+    try {
+      await post(`/shares/${encodeURIComponent(share.id)}/decision`, { decision, comment: comment.value })
+      await loadReviews()
+    } catch (err) {
+      message.className = 'result bad'
+      message.textContent = err.message
+      message.hidden = false
+      approve.disabled = changes.disabled = false
+    }
+  }
+  approve.addEventListener('click', () => decide('approved'))
+  changes.addEventListener('click', () => decide('changes'))
+  actions.append(approve, changes)
+  card.append(comment, actions, message)
+  return card
+}
+
+async function loadReviews() {
+  const res = await fetch(api('/shares'))
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Could not load your posts.')
+  $('review').hidden = data.shares.length === 0
+  $('review-list').replaceChildren(...data.shares.map(reviewCard))
+}
+
 async function start() {
   const res = await fetch(api(''))
   const body = await res.json().catch(() => ({}))
@@ -73,6 +169,7 @@ async function start() {
   document.title = `Handoff · ${body.client.name}`
   $('photo-label').hidden = !body.photosEnabled
   $('welcome').hidden = false
+  await loadReviews().catch(() => {})
 }
 
 $('f-photos').addEventListener('change', () => {

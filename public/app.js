@@ -99,9 +99,11 @@ async function start() {
 
   organization.addEventListener('change', () => {
     loadChannels(organization.value).catch((err) => showError(err.message))
+    loadDrafts()
   })
   await loadChannels(organization.value)
   await loadClients()
+  await Promise.all([loadDrafts(), loadShares()])
 }
 
 $('form').addEventListener('submit', async (event) => {
@@ -212,6 +214,9 @@ async function loadClients() {
   const list = $('client-list')
   try {
     const { clients } = await api('/api/clients')
+    $('share-client').replaceChildren(...(clients.length
+      ? clients.map((c) => option(c.id, c.name))
+      : [option('', 'Create a client first')]))
     if (!clients.length) {
       const empty = document.createElement('li')
       empty.className = 'hint'
@@ -247,6 +252,119 @@ $('client-form').addEventListener('submit', async (event) => {
     add.disabled = false
   }
 })
+
+/* --------------------------------------------------------------- approvals */
+
+async function loadDrafts() {
+  const select = $('share-draft')
+  try {
+    const { drafts } = await api(`/api/drafts?organizationId=${encodeURIComponent($('organization').value)}`)
+    select.replaceChildren(...(drafts.length
+      ? drafts.map((d) => option(d.id, `[${d.service}] ${d.text.replace(/\s+/g, ' ').slice(0, 70) || '(no text)'}`))
+      : [option('', 'No drafts in Buffer yet')]))
+  } catch (err) {
+    select.replaceChildren(option('', err.message))
+  }
+}
+
+const STATUS_LABEL = { waiting: 'Waiting', approved: 'Approved', changes: 'Needs changes' }
+
+function shareRow(share) {
+  const item = document.createElement('li')
+  const badge = document.createElement('span')
+  badge.className = `badge ${share.status}`
+  badge.textContent = STATUS_LABEL[share.status] || share.status
+
+  const body = document.createElement('div')
+  const title = document.createElement('strong')
+  title.textContent = share.clientName
+  const snippet = document.createElement('div')
+  snippet.className = 'hint'
+  snippet.textContent = `[${share.service}] ${share.text.replace(/\s+/g, ' ').slice(0, 90)}`
+  body.append(title, snippet)
+  if (share.feedback) {
+    const feedback = document.createElement('div')
+    feedback.className = 'feedback'
+    feedback.textContent = `"${share.feedback}"`
+    body.append(feedback)
+  }
+  if (share.status !== 'waiting' && share.noteSaved === false) {
+    const warn = document.createElement('div')
+    warn.className = 'hint'
+    warn.textContent = 'Saved here, but the Buffer Note could not be added.'
+    body.append(warn)
+  }
+
+  const remove = document.createElement('button')
+  remove.type = 'button'
+  remove.className = 'link'
+  remove.textContent = 'Remove'
+  remove.addEventListener('click', async () => {
+    if (!confirm('Stop sharing this post with the client?')) return
+    try {
+      await api(`/api/shares/${share.id}`, { method: 'DELETE' })
+      await loadShares()
+    } catch (err) {
+      showError(err.message)
+    }
+  })
+  item.append(badge, body, remove)
+  return item
+}
+
+async function loadShares() {
+  const list = $('board-list')
+  const counts = $('board-counts')
+  try {
+    const { shares } = await api('/api/shares')
+    const tally = { waiting: 0, approved: 0, changes: 0 }
+    shares.forEach((s) => { tally[s.status] = (tally[s.status] || 0) + 1 })
+    counts.replaceChildren(...Object.keys(STATUS_LABEL).map((key) => {
+      const chip = document.createElement('span')
+      chip.className = `badge ${key}`
+      chip.textContent = `${STATUS_LABEL[key]}: ${tally[key] || 0}`
+      return chip
+    }))
+    if (!shares.length) {
+      const empty = document.createElement('li')
+      empty.className = 'hint'
+      empty.textContent = 'Nothing shared yet.'
+      list.replaceChildren(empty)
+      return
+    }
+    list.replaceChildren(...shares.map(shareRow))
+  } catch (err) {
+    const problem = document.createElement('li')
+    problem.className = 'hint'
+    problem.textContent = err.message
+    list.replaceChildren(problem)
+  }
+}
+
+$('share-form').addEventListener('submit', async (event) => {
+  event.preventDefault()
+  const button = $('share-btn')
+  const out = $('share-result')
+  showError('')
+  button.disabled = true
+  try {
+    await api(`/api/clients/${$('share-client').value}/shares`, {
+      method: 'POST',
+      body: JSON.stringify({ postId: $('share-draft').value }),
+    })
+    out.className = 'result ok'
+    out.textContent = 'Shared. The client will see it on their private link.'
+    await loadShares()
+  } catch (err) {
+    out.className = 'result bad'
+    out.textContent = err.message
+  } finally {
+    out.hidden = false
+    button.disabled = false
+  }
+})
+
+$('board-refresh').addEventListener('click', () => { loadShares(); loadDrafts() })
 
 $('note-test').addEventListener('click', async () => {
   const button = $('note-test')

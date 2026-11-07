@@ -267,3 +267,21 @@ select:focus-visible, input:focus-visible, textarea:focus-visible {
 .clients li { display: flex; align-items: center; gap: 1rem; padding: 0.6rem 0; border-bottom: 1px solid var(--line); }
 .clients li span { flex: 1; font-weight: 500; }
 .result input[type='text'] { width: 100%; margin: 0.5rem 0; }
+
+/* Approvals */
+.badge { display: inline-block; padding: 0.1rem 0.6rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; background: var(--line); color: var(--ink); white-space: nowrap; }
+.badge.approved { background: var(--ok-bg); color: var(--ok); }
+.badge.changes { background: var(--err-bg); color: var(--err); }
+.counts { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0; }
+.board { list-style: none; margin: 0.5rem 0 2rem; padding: 0; }
+.board li { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.7rem 0; border-bottom: 1px solid var(--line); }
+.board li > div { flex: 1; min-width: 0; }
+.board-head { display: flex; align-items: center; justify-content: space-between; }
+.feedback { font-style: italic; color: var(--muted); margin: 0.25rem 0; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem; margin: 1rem 0; }
+.card-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.post-text { white-space: pre-wrap; margin: 0.75rem 0; }
+.images { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+.images img { max-width: 100%; max-height: 14rem; border-radius: var(--radius-sm); }
+.actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
+.btn.secondary { background: transparent; color: var(--ink); border: 1px solid var(--ink); }
