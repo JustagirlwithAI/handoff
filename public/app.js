@@ -127,7 +127,7 @@ function shareRow(share, reload) {
 // "Share a draft by hand": the fallback for drafts Handoff did not match itself.
 function shareByHand(client, reload) {
   const wrap = el('div', 'share-hand')
-  const open = button('Share a draft by hand', 'link', async () => {
+  const open = button(`Share a draft with ${client.name}`, 'link', async () => {
     open.disabled = true
     try {
       const { drafts } = await api('/api/drafts')
