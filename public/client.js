@@ -87,6 +87,14 @@ function reviewCard(share) {
   body.textContent = share.post.text || '(No text)'
   card.append(head, body)
 
+  // When it is planned to go out, so the client can judge the timing too.
+  const when = document.createElement('p')
+  when.className = 'hint'
+  const due = share.post.dueAt ? new Date(share.post.dueAt) : null
+  when.textContent = due && !Number.isNaN(due.getTime())
+    ? `Planned for ${due.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`
+    : 'Not scheduled yet'
+
   if (share.post.images?.length) {
     const images = document.createElement('div')
     images.className = 'images'
@@ -101,6 +109,7 @@ function reviewCard(share) {
     }
     card.append(images)
   }
+  card.append(when)
 
   if (share.feedback) {
     const said = document.createElement('p')

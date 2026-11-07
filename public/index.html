@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Draft Queue</title>
+    <title>Handoff</title>
     <link rel="icon" href="/logo.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -22,17 +22,17 @@
           </svg>
         </div>
         <div>
-          <h1>Draft Queue</h1>
-          <p class="sub">List the channels connected to your Buffer account, and add a draft post to one of their queues.</p>
+          <h1>Handoff</h1>
+          <p class="sub">Client content in. Client approvals out. All through Buffer.</p>
         </div>
       </header>
 
       <div id="banner" class="banner" hidden></div>
 
       <section id="connect" hidden>
-        <h2>Connect your account</h2>
-        <p>Draft Queue needs your permission before it can read your channels or create a draft post.</p>
-        <a class="btn" href="/auth/login">Connect Buffer</a>
+        <h2>Connect your Buffer account</h2>
+        <p>Handoff uses your Buffer account to receive your clients' content as Ideas and to keep their approvals on your posts.</p>
+        <a class="btn" href="/auth/login">Sign in with Buffer</a>
       </section>
 
       <section id="app" hidden>
@@ -41,77 +41,17 @@
           <span id="account"></span>
           <button id="logout" class="link">Sign out</button>
         </div>
-        <p id="grant" class="hint" hidden></p>
 
-        <h2>Your clients</h2>
-        <p class="hint">Each client gets a private link. They can open it with no login.</p>
-        <form id="client-form">
-          <label>
-            Client name
-            <input id="client-name" type="text" maxlength="80" required placeholder="e.g. Sunrise Bakery" />
-          </label>
-          <button id="client-add" class="btn" type="submit">Create client link</button>
+        <form id="client-form" class="inline-form">
+          <input id="client-name" type="text" maxlength="80" required placeholder="New client name, e.g. Sunrise Bakery" aria-label="New client name" />
+          <button id="client-add" class="btn" type="submit">New client link</button>
         </form>
         <div id="client-link" class="result" hidden></div>
-        <ul id="client-list" class="clients"></ul>
 
-        <h2>Approvals</h2>
-        <p class="hint">Share a draft post with a client. They can approve it or ask for changes from their link, and their answer is saved as a Note on the post in Buffer.</p>
-        <form id="share-form">
-          <label>
-            Client
-            <select id="share-client" required></select>
-          </label>
-          <label>
-            Draft post
-            <select id="share-draft" required></select>
-          </label>
-          <button id="share-btn" class="btn" type="submit">Share for approval</button>
-        </form>
-        <div id="share-result" class="result" hidden></div>
-
-        <div class="board-head">
-          <h3>Status</h3>
-          <button id="board-refresh" class="link" type="button">Refresh</button>
-        </div>
-        <div id="board-counts" class="counts"></div>
-        <ul id="board-list" class="board"></ul>
-
-        <h2>Test: add a draft post</h2>
-        <form id="form">
-          <label>
-            Organization
-            <select id="organization" required></select>
-          </label>
-
-          <label>
-            Channel
-            <select id="channel" required></select>
-          </label>
-
-          <label>
-            Post text
-            <textarea id="text" rows="5" required placeholder="What do you want to say?"></textarea>
-          </label>
-
-          <label>
-            <span>Media URL <span class="opt">optional</span></span>
-            <input id="media" type="url" placeholder="https://example.com/photo.jpg" />
-            <span id="media-hint" class="hint" hidden></span>
-          </label>
-
-          <button id="submit" class="btn" type="submit">Add draft to queue</button>
-        </form>
-
-        <div id="result" class="result" hidden></div>
-
-        <h2>Day 1 test: Notes</h2>
-        <p class="hint">Creates a throwaway draft on the selected channel (it is never published), then tries to add a Buffer Note to it. Delete the draft afterwards in Buffer.</p>
-        <button id="note-test" class="btn" type="button">Test Notes on a draft</button>
-        <div id="note-result" class="result" hidden></div>
+        <div id="clients"></div>
       </section>
 
-      <footer class="colophon">An example third-party app built on the Buffer API, created and maintained by the Buffer team. Not an official product.</footer>
+      <footer class="colophon">Handoff is an independent app built on the Buffer API. Not an official Buffer product.</footer>
     </main>
 
     <script src="/app.js" type="module"></script>
