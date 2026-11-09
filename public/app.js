@@ -170,25 +170,30 @@ function updateControl(share, reload) {
   return wrap
 }
 
-// "Share a draft by hand": the fallback for drafts Handoff did not match itself.
-function shareByHand(client, reload) {
+// A visible "Share a draft" button on every client card. Handoff already shows a
+// client any draft made from their own content; this is for drafts written from scratch.
+function shareControl(client, reload) {
   const wrap = el('div', 'share-hand')
-  const open = button(`Share a draft with ${client.name}`, 'link', async () => {
-    open.disabled = true
+  const start = button('Share a draft', 'btn secondary', async () => {
+    start.disabled = true
+    showError('')
     try {
       const { drafts } = await api('/api/drafts')
       const taken = new Set(client.shares.map((s) => s.postId))
       const choices = drafts.filter((d) => !taken.has(d.id))
+      const cancel = button('Cancel', 'link', () => wrap.replaceChildren(...initial()))
+      if (!choices.length) {
+        wrap.replaceChildren(el('span', 'tip', 'No drafts to share yet. Create a draft in Buffer first, then come back.'), cancel)
+        return
+      }
       const select = el('select')
-      select.append(...(choices.length
-        ? choices.map((d) => {
-            const option = el('option', '', `[${d.service}] ${d.text.replace(/\s+/g, ' ').slice(0, 60) || '(no text)'}`)
-            option.value = d.id
-            return option
-          })
-        : [Object.assign(el('option', '', 'No other drafts in Buffer'), { value: '' })]))
+      select.setAttribute('aria-label', 'Draft to share')
+      select.append(...choices.map((d) => {
+        const option = el('option', '', `[${d.service}] ${d.text.replace(/\s+/g, ' ').slice(0, 60) || '(no text)'}`)
+        option.value = d.id
+        return option
+      }))
       const go = button('Share', 'btn', async () => {
-        if (!select.value) return
         go.disabled = true
         try {
           await api(`/api/clients/${client.id}/shares`, { method: 'POST', body: JSON.stringify({ postId: select.value }) })
@@ -198,33 +203,40 @@ function shareByHand(client, reload) {
           go.disabled = false
         }
       })
-      wrap.replaceChildren(select, go)
+      wrap.replaceChildren(select, go, cancel)
     } catch (err) {
       showError(err.message)
-      open.disabled = false
+      start.disabled = false
     }
   })
-  wrap.append(open)
+  const initial = () => [start, el('span', 'tip', `Made a draft in Buffer? Share it with ${client.name} to get their approval.`)]
+  wrap.append(...initial())
   return wrap
 }
 
 function clientCard(client, reload, openName) {
-  const card = el('details', 'client')
-  card.open = client.name === openName
-  const summary = el('summary')
-  summary.append(el('strong', '', client.name))
+  const card = el('div', 'client')
+  card.dataset.name = client.name
+
+  const head = el('div', 'client-head')
+  head.append(el('strong', '', client.name))
   const chips = el('span', 'chips')
   for (const status of ['changes', 'waiting', 'approved']) {
     if (client.counts[status]) chips.append(chip(status, client.counts[status]))
   }
   if (!chips.children.length) chips.append(el('span', 'hint', 'nothing shared yet'))
-  summary.append(chips)
-  card.append(summary)
+  head.append(chips)
+  card.append(head)
 
   // The newest change request, in one line, right on the card.
   const latest = client.shares.find((s) => s.status === 'changes' && s.feedback)
   if (latest) card.append(el('div', 'feedback', `"${latest.feedback}"`))
 
+  card.append(shareControl(client, reload))
+
+  const more = el('details', 'client-more')
+  more.open = client.name === openName
+  more.append(el('summary', '', client.shares.length ? 'Posts and settings' : 'Settings'))
   const body = el('div', 'client-body')
   if (client.shares.length) {
     const list = el('ul', 'board')
@@ -261,8 +273,9 @@ function clientCard(client, reload, openName) {
       }
     }),
   )
-  body.append(actions, shareByHand(client, reload))
-  card.append(body)
+  body.append(actions)
+  more.append(body)
+  card.append(more)
   return card
 }
 
@@ -270,7 +283,7 @@ let lastClients = []
 
 async function loadOverview() {
   const container = $('clients')
-  const openName = [...container.querySelectorAll('details[open] > summary strong')][0]?.textContent
+  const openName = [...container.querySelectorAll('.client')].find((c) => c.querySelector('details[open]'))?.dataset.name
   try {
     const { clients } = await api('/api/overview')
     // Clients that need attention come first.

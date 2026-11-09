@@ -45,3 +45,29 @@ test('a draft is matched to a client by tag, or by what the client wrote', () =>
   assert.equal(matchClient({ tags: [], text: 'Fresh bread daily' }, clients, [...bodies, { client_id: 'c2', body: 'Fresh bread daily' }]), null)
   assert.equal(matchClient({ tags: [], text: 'x' }, clients, [{ client_id: 'c1', body: '  ' }]), null)
 })
+
+const { snapshotUpdates, sameSnapshot } = await import('../lib/approvals.js')
+
+test('a post scheduled in Buffer reaches the client; approved wording is never changed behind their back', () => {
+  const old = { text: 'Hello', service: 'linkedin', channel: 'Page', dueAt: null, images: [] }
+  const post = (over) => ({ id: 'p1', text: 'Hello', service: 'linkedin', channel: { name: 'Page' }, dueAt: null, assets: [], ...over })
+  const asPost = (over) => ({ ...old, id: 'p1', ...over }) // shape produced by listPosts
+
+  // waiting: everything follows Buffer
+  let ups = snapshotUpdates([asPost({ dueAt: '2026-11-11T17:00:00.000Z', text: 'Hello, edited' })], [{ id: 's1', post_id: 'p1', status: 'waiting', snapshot: old }])
+  assert.equal(ups.length, 1)
+  assert.equal(ups[0].snapshot.dueAt, '2026-11-11T17:00:00.000Z')
+  assert.equal(ups[0].snapshot.text, 'Hello, edited')
+
+  // approved: only the date follows Buffer, the approved wording stays
+  ups = snapshotUpdates([asPost({ dueAt: '2026-11-11T17:00:00.000Z', text: 'Rewritten after approval' })], [{ id: 's2', post_id: 'p1', status: 'approved', snapshot: old }])
+  assert.equal(ups[0].snapshot.dueAt, '2026-11-11T17:00:00.000Z')
+  assert.equal(ups[0].snapshot.text, 'Hello')
+
+  // nothing changed, or the post is gone from Buffer's active list: no update
+  assert.deepEqual(snapshotUpdates([asPost({})], [{ id: 's3', post_id: 'p1', status: 'waiting', snapshot: old }]), [])
+  assert.deepEqual(snapshotUpdates([], [{ id: 's4', post_id: 'p9', status: 'waiting', snapshot: old }]), [])
+  assert.equal(sameSnapshot({ ...old, images: [{ url: 'a' }] }, { ...old, images: [{ url: 'a' }] }), true)
+  assert.equal(sameSnapshot(old, { ...old, images: [{ url: 'a' }] }), false)
+  void post
+})
