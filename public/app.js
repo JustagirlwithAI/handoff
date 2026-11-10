@@ -505,19 +505,101 @@ function renderFilters() {
   }))
 }
 
+// What the opened entry is showing, in plain words.
+const DETAIL_LABEL = {
+  approved: 'Exactly what was approved',
+  changes: 'The post they asked changes on',
+  updated: 'The updated version that was sent',
+  shared: 'What was shared with them',
+  submitted: 'Exactly what they sent',
+}
+
+const isHttps = (url) => typeof url === 'string' && /^https:\/\//i.test(url)
+
+function picture(url) {
+  const img = el('img')
+  img.src = url
+  img.alt = ''
+  img.loading = 'lazy'
+  img.referrerPolicy = 'no-referrer'
+  return img
+}
+
+// The full content of one entry: the post, its photos and timing, and what was said.
+function eventDetail(d) {
+  const nodes = [el('p', 'detail-label', DETAIL_LABEL[d.kind] || 'Details')]
+  const box = el('div', 'detail-post')
+
+  if (d.kind === 'submitted') {
+    const p = d.post
+    const rows = [['Title', p.title], ['Post text', p.text], ['Extra details', p.details], ['Timing notes', p.timing], ['Preferred date', p.date]]
+    const list = el('dl', 'kv')
+    for (const [label, value] of rows) {
+      if (!value) continue
+      list.append(el('dt', '', label), el('dd', 'pre', String(value)))
+    }
+    box.append(list)
+    const photos = (p.photos || []).filter(isHttps)
+    if (photos.length) {
+      const pics = el('div', 'images')
+      pics.append(...photos.map(picture))
+      box.append(pics)
+    }
+  } else {
+    const p = d.post
+    const where = [p.service, p.channel].filter(Boolean).join(' · ')
+    if (where) box.append(el('p', 'hint', where))
+    box.append(el('p', 'post-text', p.text || '(No text)'))
+    const photos = (p.images || []).map((i) => i.url).filter(isHttps)
+    if (photos.length) {
+      const pics = el('div', 'images')
+      pics.append(...photos.map(picture))
+      box.append(pics)
+    }
+    const due = p.dueAt ? new Date(p.dueAt) : null
+    box.append(el('p', 'hint', due && !Number.isNaN(due.getTime()) ? `Planned for ${when(due)}` : 'Not scheduled'))
+  }
+  nodes.push(box)
+
+  if (d.comment && d.kind !== 'submitted') nodes.push(el('p', 'event-comment', `${COMMENT_LEAD[d.kind] || ''}"${d.comment}"`))
+  if (!d.exact) {
+    nodes.push(el('p', 'hint', 'This is an older entry. Its exact wording at that moment was not saved, so this shows the post as Handoff last had it.'))
+  }
+  return nodes
+}
+
 function eventCard(event, date) {
-  const card = el('article', 'event')
+  // The whole card opens: tap it to see exactly what the entry contains.
+  const card = el('details', 'event')
+  const summary = el('summary')
   const top = el('div', 'event-top')
   const stamp = el('time', 'event-time', when(date))
   stamp.dateTime = date.toISOString()
   top.append(el('span', `badge ${KIND_BADGE[event.kind] || ''}`, KIND_LABEL[event.kind] || event.kind), el('strong', 'event-client', event.clientName), stamp)
-  card.append(top)
+  summary.append(top)
   if (event.text) {
     const flat = event.text.replace(/\s+/g, ' ').trim()
     const clipped = flat.length > 140 ? `${flat.slice(0, 139).trimEnd()}…` : flat
-    card.append(el('p', 'event-text', `${event.service ? `[${event.service}] ` : ''}${clipped}`))
+    summary.append(el('p', 'event-text', `${event.service ? `[${event.service}] ` : ''}${clipped}`))
   }
-  if (event.comment) card.append(el('p', 'event-comment', `${COMMENT_LEAD[event.kind] || ''}"${event.comment}"`))
+  if (event.comment) summary.append(el('p', 'event-comment', `${COMMENT_LEAD[event.kind] || ''}"${event.comment}"`))
+  card.append(summary)
+
+  // The full copy is fetched the first time the card is opened.
+  const detail = el('div', 'event-detail')
+  card.append(detail)
+  let loaded = false
+  card.addEventListener('toggle', async () => {
+    if (!card.open || loaded) return
+    loaded = true
+    detail.replaceChildren(el('p', 'hint', 'Loading…'))
+    try {
+      detail.replaceChildren(...eventDetail(await api(`/api/history/${encodeURIComponent(event.id)}`)))
+    } catch (err) {
+      loaded = false
+      detail.replaceChildren(el('p', 'hint', err.message))
+    }
+  })
   return card
 }
 

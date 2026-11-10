@@ -105,3 +105,48 @@ test('History is ordered by when things really happened, not by when they were s
     await db.deleteClient(owner, client.id)
   }
 })
+
+test('an entry keeps the exact post as it was, in full, and only its owner can open it', needsDb, async () => {
+  const owner = `hist-detail-${Date.now()}`
+  const { client } = await db.createClient(owner, `HistDetail ${Date.now()}`)
+  try {
+    const longText = `Line one.\n\n${'A long caption that goes well past the short preview length. '.repeat(15)}END`
+    assert.ok(longText.length > 600)
+    const shareId = await db.createShare(owner, client.id, 'histpost0101', { ...snap(longText), images: [{ type: 'image', url: 'https://cdn.example/a.jpg' }] })
+    await db.recordDecision(shareId, { status: 'approved', feedback: 'Love it', noteSaved: true })
+
+    // the manager rewrites the post afterwards; what was approved must not change
+    await db.refreshShare(owner, shareId, snap('A completely different text'), 'Rewrote it')
+
+    const approved = (await db.listEvents(owner, 'approved'))[0]
+    const full = await db.getEvent(owner, approved.id)
+    assert.equal(full.snapshot.text, longText, 'the whole text, not the 300-character preview')
+    assert.equal(full.snapshot.images[0].url, 'https://cdn.example/a.jpg')
+    assert.equal(full.comment, 'Love it')
+
+    const updated = await db.getEvent(owner, (await db.listEvents(owner, 'updated'))[0].id)
+    assert.equal(updated.snapshot.text, 'A completely different text')
+
+    assert.equal(await db.getEvent(`someone-else-${Date.now()}`, approved.id), null)
+  } finally {
+    await db.deleteClient(owner, client.id)
+  }
+})
+
+test('what a client sent is kept in full too', needsDb, async () => {
+  const owner = `hist-sent-${Date.now()}`
+  const { client } = await db.createClient(owner, `HistSent ${Date.now()}`)
+  try {
+    const id = await db.createSubmission(client.id, {
+      title: 'Weekend sale', text: 'Everything half price', details: 'Use #sale', timing: 'Morning', date: '2026-12-01', photos: ['https://cdn.example/p.jpg'],
+    })
+    await db.finishSubmission(id, { ideaId: 'idea1' })
+    const sent = await db.getEvent(owner, (await db.listEvents(owner, 'submitted'))[0].id)
+    assert.deepEqual(
+      { title: sent.snapshot.title, text: sent.snapshot.text, details: sent.snapshot.details, timing: sent.snapshot.timing, date: sent.snapshot.date, photos: sent.snapshot.photos },
+      { title: 'Weekend sale', text: 'Everything half price', details: 'Use #sale', timing: 'Morning', date: '2026-12-01', photos: ['https://cdn.example/p.jpg'] },
+    )
+  } finally {
+    await db.deleteClient(owner, client.id)
+  }
+})

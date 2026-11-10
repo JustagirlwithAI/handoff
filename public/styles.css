@@ -526,3 +526,21 @@ details.folded > .card { margin: 0; border: 0; box-shadow: none; padding: 1rem 0
 
 /* A fine outline keeps the selected choice visible on dark backgrounds too. */
 .tab[aria-selected='true'], .seg button[aria-pressed='true'] { box-shadow: 0 0 0 1px var(--line), 0 1px 3px rgba(0, 0, 0, 0.14); }
+
+/* History entries open to show exactly what they contain */
+.event { padding: 0; }
+.event > summary { position: relative; list-style: none; cursor: pointer; padding: 0.8rem 2.4rem 0.8rem 1rem; border-radius: var(--radius-sm); -webkit-tap-highlight-color: transparent; transition: background-color 120ms ease; }
+.event > summary::-webkit-details-marker { display: none; }
+.event > summary:hover { background: var(--fill); }
+.event > summary:active { background: var(--fill-strong); }
+.event > summary::after { content: ''; position: absolute; right: 1.1rem; top: 1.15rem; width: 0.5rem; height: 0.5rem; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform 180ms ease; }
+.event[open] > summary::after { transform: rotate(45deg); }
+.event[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.event-detail { padding: 0.25rem 1rem 1rem; border-top: 1px solid var(--line); }
+.detail-label { margin: 0.75rem 0 0.4rem; color: var(--muted); font-size: 0.78rem; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; }
+.detail-post { background: var(--fill); border-radius: var(--radius-sm); padding: 0.75rem 0.9rem; }
+.detail-post .post-text { margin: 0.25rem 0 0.5rem; }
+.detail-post .hint { margin: 0.25rem 0 0; }
+.detail-post .images { margin: 0.5rem 0; }
+.detail-post .kv { gap: 0.5rem 0.9rem; }
+.detail-post dd.pre { white-space: pre-wrap; font-weight: 500; }
