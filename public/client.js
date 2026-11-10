@@ -250,7 +250,7 @@ async function setupNotifications() {
     else if (current) text.textContent = '🔔 You will get a notification when a post is ready.'
     else text.textContent = 'Want a heads-up when a post is ready for you? Turn on notifications.'
     toggle.textContent = current ? 'Turn off' : 'Notify me'
-    toggle.className = current ? 'link' : 'btn'
+    toggle.className = current ? 'link' : 'btn small'
   }
 
   toggle.addEventListener('click', async () => {

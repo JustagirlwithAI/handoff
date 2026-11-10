@@ -2,68 +2,60 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Handoff</title>
     <link rel="icon" href="/logo.svg" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <meta name="theme-color" content="#283f3e" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap"
-    />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main>
-      <header>
-        <div class="mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+    <header class="appbar">
+      <a class="brand" href="/">
+        <span class="mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
             <path d="M4 7h16" /><path d="M4 12h10" /><path d="M4 17h6" />
           </svg>
-        </div>
-        <div>
-          <h1>Handoff</h1>
-          <p class="sub">Client content in. Client approvals out. All through Buffer.</p>
-        </div>
-      </header>
+        </span>
+        Handoff
+      </a>
+      <div id="appbar-actions" class="appbar-actions" hidden>
+        <span id="account" class="account"></span>
+        <button id="logout" class="link" type="button">Sign out</button>
+      </div>
+    </header>
 
-      <div id="banner" class="banner" hidden></div>
+    <main>
+      <div id="banner" class="banner" role="alert" hidden></div>
 
-      <section id="connect" hidden>
-        <h2>Connect your Buffer account</h2>
-        <p>Handoff uses your Buffer account to receive your clients' content as Ideas and to keep their approvals on your posts.</p>
+      <section id="connect" class="hero" hidden>
+        <h1>Client content in.<br />Client approvals out.</h1>
+        <p>Handoff gives each client a private link. What they send lands in your Buffer, and they approve your drafts without ever creating an account.</p>
         <a class="btn" href="/auth/login">Sign in with Buffer</a>
       </section>
 
-      <section id="app" hidden>
-        <div class="who">
-          <span class="dot" aria-hidden="true"></span>
-          <span id="account"></span>
-          <button id="logout" class="link">Sign out</button>
-        </div>
-
+      <div id="app" hidden>
         <div id="notify" class="notify" hidden>
           <span id="notify-text"></span>
-          <button id="notify-toggle" class="btn" type="button"></button>
+          <button id="notify-toggle" class="btn small" type="button"></button>
           <button id="notify-test" class="link" type="button" hidden>Send a test</button>
         </div>
 
         <form id="client-form" class="inline-form">
-          <input id="client-name" type="text" maxlength="80" required placeholder="New client name, e.g. Sunrise Bakery" aria-label="New client name" />
-          <button id="client-add" class="btn" type="submit">New client link</button>
+          <input id="client-name" type="text" maxlength="80" required placeholder="Add a client, e.g. Sunrise Bakery" aria-label="New client name" />
+          <button id="client-add" class="btn" type="submit">Add client</button>
         </form>
-        <p class="howto">
-          <strong>How it works:</strong> give each client their private link. What they send appears in Buffer as an Idea. Turn it into a draft in Buffer, and Handoff shows it to them to approve. For a draft you wrote yourself, use <strong>Share a draft</strong> on their card.
-        </p>
         <div id="client-link" class="result" hidden></div>
 
+        <div id="clients-label" class="section-label" hidden>Clients</div>
         <div id="clients"></div>
-      </section>
+        <div id="help"></div>
+      </div>
 
-      <footer class="colophon">Handoff is an independent app built on the Buffer API. Not an official Buffer product. <a href="/privacy.html">Privacy</a></footer>
+      <footer class="colophon">
+        An independent app built on the Buffer API, not an official Buffer product. <a href="/privacy.html">Privacy</a>
+      </footer>
     </main>
 
     <script src="/app.js" type="module"></script>

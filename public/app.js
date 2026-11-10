@@ -120,7 +120,7 @@ function shareRow(share, reload, hideFeedback) {
   const top = el('div', 'row')
   top.append(
     el('span', `badge ${share.status}`, STATUS_LABEL[share.status] || share.status),
-    button('Remove', 'link', async () => {
+    button('Remove', 'link danger', async () => {
       if (!confirm('Stop sharing this post with the client?')) return
       try {
         await api(`/api/shares/${share.id}`, { method: 'DELETE' })
@@ -130,7 +130,8 @@ function shareRow(share, reload, hideFeedback) {
       }
     }),
   )
-  item.append(top, el('div', 'hint', `[${share.service}] ${share.text.replace(/\s+/g, ' ').slice(0, 90)}`))
+  const flat = share.text.replace(/\s+/g, ' ').trim()
+  item.append(top, el('div', 'hint', `[${share.service}] ${flat.length > 90 ? `${flat.slice(0, 89).trimEnd()}…` : flat}`))
   // The newest change request is already shown at the top of the card.
   if (share.feedback && !hideFeedback) item.append(el('div', 'feedback', `"${share.feedback}"`))
   if (share.status !== 'waiting' && share.noteSaved === false) {
@@ -151,7 +152,7 @@ function updateControl(share, reload) {
     note.maxLength = 300
     note.placeholder = 'What changed? (optional, the client will see it)'
     note.setAttribute('aria-label', 'Note to the client')
-    const send = button('Send', 'btn', async () => {
+    const send = button('Send', 'btn small', async () => {
       send.disabled = true
       showError('')
       try {
@@ -174,14 +175,14 @@ function updateControl(share, reload) {
 // client any draft made from their own content; this is for drafts written from scratch.
 function shareControl(client, reload) {
   const wrap = el('div', 'share-hand')
-  const start = button('Share a draft', 'btn secondary', async () => {
+  const start = button('＋ Share a draft', 'btn small', async () => {
     start.disabled = true
     showError('')
     try {
       const { drafts } = await api('/api/drafts')
       const taken = new Set(client.shares.map((s) => s.postId))
       const choices = drafts.filter((d) => !taken.has(d.id))
-      const cancel = button('Cancel', 'link', () => wrap.replaceChildren(...initial()))
+      const cancel = button('Cancel', 'link', () => wrap.replaceChildren(start))
       if (!choices.length) {
         wrap.replaceChildren(el('span', 'tip', 'No drafts to share yet. Create a draft in Buffer first, then come back.'), cancel)
         return
@@ -193,7 +194,7 @@ function shareControl(client, reload) {
         option.value = d.id
         return option
       }))
-      const go = button('Share', 'btn', async () => {
+      const go = button('Share', 'btn small', async () => {
         go.disabled = true
         try {
           await api(`/api/clients/${client.id}/shares`, { method: 'POST', body: JSON.stringify({ postId: select.value }) })
@@ -209,35 +210,42 @@ function shareControl(client, reload) {
       start.disabled = false
     }
   })
-  const initial = () => [start, el('span', 'tip', `Made a draft in Buffer? Share it with ${client.name} to get their approval.`)]
-  wrap.append(...initial())
+  start.title = `Pick a draft from Buffer to show ${client.name} for approval`
+  wrap.append(start)
   return wrap
 }
 
-function clientCard(client, reload, openName) {
-  const card = el('div', 'client')
-  card.dataset.name = client.name
+// Which client rows are open. A row you have not seen before opens by itself when
+// nothing is shared yet, so the next step (Share a draft) is right there.
+const openRows = new Set()
+const seenRows = new Set()
 
-  const head = el('div', 'client-head')
-  head.append(el('strong', '', client.name))
+function clientCard(client, reload) {
+  if (!seenRows.has(client.id)) {
+    seenRows.add(client.id)
+    if (!client.shares.length) openRows.add(client.id)
+  }
+  const card = el('details', 'client')
+  card.open = openRows.has(client.id)
+  card.addEventListener('toggle', () => (card.open ? openRows.add(client.id) : openRows.delete(client.id)))
+
+  // The row you tap: name, a count per status, and a chevron.
+  const summary = el('summary')
+  summary.append(el('span', 'client-name', client.name))
   const chips = el('span', 'chips')
   for (const status of ['changes', 'waiting', 'approved']) {
     if (client.counts[status]) chips.append(chip(status, client.counts[status]))
   }
-  if (!chips.children.length) chips.append(el('span', 'hint', 'nothing shared yet'))
-  head.append(chips)
-  card.append(head)
+  if (!chips.children.length) chips.append(el('span', 'tip', 'Nothing shared yet'))
+  summary.append(chips)
 
-  // The newest change request, in one line, right on the card.
+  // The newest change request, in one line, visible even when the row is closed.
   const latest = client.shares.find((s) => s.status === 'changes' && s.feedback)
-  if (latest) card.append(el('div', 'feedback', `"${latest.feedback}"`))
+  if (latest) summary.append(el('p', 'client-sub', `"${latest.feedback}"`))
+  card.append(summary)
 
-  card.append(shareControl(client, reload))
-
-  const more = el('details', 'client-more')
-  more.open = client.name === openName
-  more.append(el('summary', '', client.shares.length ? 'Posts and settings' : 'Settings'))
   const body = el('div', 'client-body')
+  body.append(shareControl(client, reload))
   if (client.shares.length) {
     const list = el('ul', 'board')
     list.append(...client.shares.map((s) => shareRow(s, reload, s === latest)))
@@ -246,7 +254,7 @@ function clientCard(client, reload, openName) {
 
   const actions = el('div', 'actions')
   if (client.counts.changes) {
-    const open = el('a', 'btn', 'Open Buffer')
+    const open = el('a', 'btn small', 'Open Buffer')
     open.href = 'https://publish.buffer.com'
     open.target = '_blank'
     open.rel = 'noopener noreferrer'
@@ -263,7 +271,8 @@ function clientCard(client, reload, openName) {
         showError(err.message)
       }
     }),
-    button('Delete client', 'link', async () => {
+    el('span', 'spacer'),
+    button('Delete client', 'link danger', async () => {
       if (!confirm(`Delete ${client.name}? Their link will stop working.`)) return
       try {
         await api(`/api/clients/${client.id}`, { method: 'DELETE' })
@@ -274,27 +283,54 @@ function clientCard(client, reload, openName) {
     }),
   )
   body.append(actions)
-  more.append(body)
-  card.append(more)
+  card.append(body)
   return card
 }
 
-let lastClients = []
+const HOW_IT_WORKS = [
+  ['Add a client', 'and send them their private link.'],
+  ['They send content.', 'It lands in your Buffer as an Idea.'],
+  ['Turn it into a draft in Buffer.', 'Handoff shows it to them to approve.'],
+  ['Their answer comes back', 'as a note on your post, and a notification.'],
+]
+
+function howItWorks(className) {
+  const list = el('ol', className)
+  list.append(...HOW_IT_WORKS.map(([lead, rest]) => {
+    const item = el('li')
+    item.append(el('strong', '', lead), document.createTextNode(` ${rest}`))
+    return item
+  }))
+  return list
+}
 
 async function loadOverview() {
   const container = $('clients')
-  const openName = [...container.querySelectorAll('.client')].find((c) => c.querySelector('details[open]'))?.dataset.name
   try {
     const { clients } = await api('/api/overview')
     // Clients that need attention come first.
     clients.sort((a, b) => (b.counts.changes - a.counts.changes) || (b.counts.waiting - a.counts.waiting))
-    lastClients = clients
+    $('clients-label').hidden = !clients.length
+
     if (!clients.length) {
-      container.replaceChildren(el('p', 'hint', 'No clients yet. Add one above and send them their private link.'))
+      // First visit: explain the whole idea once, where it is needed.
+      container.className = 'empty'
+      const heading = el('h2', '', 'Start with your first client')
+      const lede = el('p', 'tip', 'Each client gets a private link, so they never need an account.')
+      container.replaceChildren(heading, lede, howItWorks('steps'))
+      $('help').replaceChildren()
       return
     }
-    container.replaceChildren(...clients.map((c) => clientCard(c, loadOverview, openName)))
+
+    container.className = 'group'
+    container.replaceChildren(...clients.map((c) => clientCard(c, loadOverview)))
+
+    // Afterwards the explanation steps aside into a small, closed "?" help.
+    const help = el('details', 'help')
+    help.append(el('summary', '', 'How Handoff works'), howItWorks('steps'))
+    $('help').replaceChildren(help)
   } catch (err) {
+    container.className = ''
     container.replaceChildren(el('p', 'hint', err.message))
   }
 }
@@ -334,8 +370,8 @@ async function setupNotifications() {
     if (blocked) text.textContent = 'Notifications are blocked for this site. Allow them in your browser settings (the lock icon by the address), then reload.'
     else if (current) text.textContent = '🔔 Notifications are on for this device.'
     else text.textContent = 'Get a notification when a client approves, asks for changes, or sends content.'
-    toggle.textContent = current ? 'Turn off' : 'Turn on notifications'
-    toggle.className = current ? 'link' : 'btn'
+    toggle.textContent = current ? 'Turn off' : 'Turn on'
+    toggle.className = current ? 'link' : 'btn small'
   }
 
   toggle.addEventListener('click', async () => {
@@ -385,7 +421,8 @@ async function start() {
   }
   $('app').hidden = false
   const { account } = session
-  $('account').textContent = `Signed in as ${account.name || account.email}`
+  $('account').textContent = account.name || account.email
+  $('appbar-actions').hidden = false
   setupNotifications().catch(() => { $('notify').hidden = true })
   await loadOverview()
   // Stay current while the dashboard is open.

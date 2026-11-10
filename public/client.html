@@ -2,89 +2,91 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="robots" content="noindex, nofollow" />
     <meta name="referrer" content="no-referrer" />
     <title>Handoff</title>
     <link rel="icon" href="/logo.svg" type="image/svg+xml" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap"
-    />
+    <meta name="theme-color" content="#283f3e" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main>
-      <header>
-        <div class="mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+    <header class="appbar">
+      <span class="brand">
+        <span class="mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
             <path d="M4 7h16" /><path d="M4 12h10" /><path d="M4 17h6" />
           </svg>
-        </div>
-        <div>
-          <h1 id="title">Handoff</h1>
-          <p class="sub" id="sub">Checking your link…</p>
-        </div>
-      </header>
+        </span>
+        Handoff
+      </span>
+    </header>
 
-      <div id="banner" class="banner" hidden></div>
+    <main>
+      <div id="banner" class="banner" role="alert" hidden></div>
+
+      <div class="greeting">
+        <h1 id="title">Handoff</h1>
+        <p id="sub">Checking your link…</p>
+      </div>
 
       <div id="notify" class="notify" hidden>
         <span id="notify-text"></span>
-        <button id="notify-toggle" class="btn" type="button"></button>
+        <button id="notify-toggle" class="btn small" type="button"></button>
       </div>
 
-      <section id="review" hidden>
+      <section id="review" class="block" hidden>
         <h2>Posts to review</h2>
         <p id="review-sub">Your manager shared these drafts with you. Approve them, or tell us what to change.</p>
         <div id="review-note" class="result ok" hidden></div>
         <div id="review-list"></div>
       </section>
 
-      <section id="welcome" hidden>
+      <section id="welcome" class="block" hidden>
         <h2>Send content for a post</h2>
         <p>Tell your social media manager what you'd like posted. No account needed.</p>
 
-        <form id="submit-form">
-          <label>
-            Title
-            <input id="f-title" type="text" maxlength="100" required placeholder="e.g. Weekend sale announcement" />
-          </label>
+        <div class="card">
+          <form id="submit-form">
+            <label>
+              Title
+              <input id="f-title" type="text" maxlength="100" required placeholder="e.g. Weekend sale announcement" />
+            </label>
 
-          <label>
-            Post text
-            <textarea id="f-text" rows="5" maxlength="2000" required placeholder="What should the post say?"></textarea>
-          </label>
+            <label>
+              Post text
+              <textarea id="f-text" rows="5" maxlength="2000" required placeholder="What should the post say?"></textarea>
+            </label>
 
-          <label id="photo-label" hidden>
-            <span>Photos <span class="opt">optional, up to 4</span></span>
-            <input id="f-photos" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple />
-            <span id="photo-hint" class="hint"></span>
-          </label>
+            <label id="photo-label" hidden>
+              <span>Photos <span class="opt">optional, up to 4</span></span>
+              <input id="f-photos" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple />
+              <span id="photo-hint" class="hint"></span>
+            </label>
 
-          <label>
-            <span>Extra details <span class="opt">optional</span></span>
-            <textarea id="f-details" rows="3" maxlength="1000" placeholder="Links, hashtags, things to avoid…"></textarea>
-          </label>
+            <label>
+              <span>Extra details <span class="opt">optional</span></span>
+              <textarea id="f-details" rows="3" maxlength="1000" placeholder="Links, hashtags, things to avoid…"></textarea>
+            </label>
 
-          <label>
-            <span>Preferred date <span class="opt">optional</span></span>
-            <input id="f-date" type="date" />
-          </label>
+            <label>
+              <span>Preferred date <span class="opt">optional</span></span>
+              <input id="f-date" type="date" />
+            </label>
 
-          <label>
-            <span>Timing notes <span class="opt">optional</span></span>
-            <input id="f-timing" type="text" maxlength="200" placeholder="e.g. Morning, before 10am" />
-          </label>
+            <label>
+              <span>Timing notes <span class="opt">optional</span></span>
+              <input id="f-timing" type="text" maxlength="200" placeholder="e.g. Morning, before 10am" />
+            </label>
 
-          <button id="f-send" class="btn" type="submit">Send</button>
-        </form>
+            <button id="f-send" class="btn" type="submit">Send</button>
+          </form>
+        </div>
 
         <div id="f-result" class="result" hidden></div>
         <p class="hint">Keep this link to yourself. Anyone who has it can use this page.</p>
       </section>
+
       <footer class="colophon"><a href="/privacy.html">Privacy</a></footer>
     </main>
     <script src="/client.js" type="module"></script>
