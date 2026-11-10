@@ -36,7 +36,7 @@
       </div>
 
       <div id="tabs" class="tabs" role="tablist" aria-label="Your page" hidden>
-        <button id="tab-home" class="tab" role="tab" aria-selected="true" aria-controls="view-home" type="button">To review</button>
+        <button id="tab-home" class="tab" role="tab" aria-selected="true" aria-controls="view-home" type="button"><span>To review</span><span id="tab-count" class="count" hidden></span></button>
         <button id="tab-history" class="tab" role="tab" aria-selected="false" aria-controls="view-history" type="button">History</button>
       </div>
 
@@ -60,8 +60,8 @@
           <details id="send-box" class="fold">
             <summary>
               <span class="fold-text">
-                <span class="fold-title">Send additional content for a post</span>
-                <span class="fold-sub">More ideas, links or details you did not include before</span>
+                <span id="send-title" class="fold-title">Send content for a post</span>
+                <span id="send-sub" class="fold-sub">Tell your social media manager what you'd like posted. No account needed.</span>
               </span>
             </summary>
             <div class="fold-body">

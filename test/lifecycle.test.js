@@ -132,3 +132,20 @@ test('the edited-in-Buffer flag is set, kept, and cleared when a new version is 
     await db.deleteClient(owner, client.id)
   }
 })
+
+test('a client counts as "shared with" from the moment a draft is first shared, and stays that way', needsDb, async () => {
+  const owner = `life-shared-${Date.now()}`
+  const { client } = await db.createClient(owner, `LifeShared ${Date.now()}`)
+  try {
+    assert.equal(await db.clientEverShared(client.id), false, 'a brand-new client has had nothing shared')
+    const id = await db.createShare(owner, client.id, 'lifepost0401', snap('First draft'))
+    assert.equal(await db.clientEverShared(client.id), true)
+    await db.recordDecision(id, { status: 'approved', feedback: '', noteSaved: true })
+    assert.deepEqual(await db.listSharesForClient(client.id), [], 'nothing waiting any more...')
+    assert.equal(await db.clientEverShared(client.id), true, '...but they still count as shared with')
+    await db.deleteShare(owner, id)
+    assert.equal(await db.clientEverShared(client.id), true, 'even if the manager later removes the post')
+  } finally {
+    await db.deleteClient(owner, client.id)
+  }
+})

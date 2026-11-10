@@ -180,10 +180,41 @@ async function loadReviews() {
   if (!res.ok) throw new Error(data.error || 'Could not load your posts.')
   const count = data.shares.length
   $('review').hidden = count === 0
-  $('review-empty').hidden = count > 0 // a calm line when nothing needs an answer
+  // "All caught up" only makes sense once something has been shared with them.
+  $('review-empty').hidden = !(data.everShared && count === 0)
   $('review-list').replaceChildren(...data.shares.map(reviewCard))
   $('review-sub').textContent = `You have ${count} post${count === 1 ? '' : 's'} to look at.`
+  // The tab says how many posts need their answer.
+  $('tab-count').hidden = count === 0
+  $('tab-count').textContent = String(count)
+  applyLayout(Boolean(data.everShared))
 }
+
+// The send form has two looks. Until the manager shares a first draft with this
+// client, it is the full form: that is the page's main job. From then on the
+// client's attention belongs to the review, so it folds into a bar.
+let everShared = null
+function applyLayout(shared) {
+  const box = $('send-box')
+  const first = everShared === null
+  const changed = everShared !== shared
+  everShared = shared
+  $('send-title').textContent = shared ? 'Send additional content for a post' : 'Send content for a post'
+  $('send-sub').textContent = shared
+    ? 'More ideas, links or details you did not include before'
+    : "Tell your social media manager what you'd like posted. No account needed."
+  box.classList.toggle('static', !shared) // full form: no fold arrow, cannot be collapsed
+  if (!shared) {
+    box.open = true
+  } else if (changed) {
+    // A draft was just shared. Fold the form away, unless they are mid-way through writing.
+    const typed = [...box.querySelectorAll('input:not([type=file]), textarea')].some((field) => field.value)
+    if (first || !typed) box.open = false
+  }
+}
+$('send-box').querySelector('summary').addEventListener('click', (event) => {
+  if ($('send-box').classList.contains('static')) event.preventDefault()
+})
 
 let noteTimer
 function showReviewNote(message) {
@@ -498,9 +529,10 @@ async function start() {
   $('sub').textContent = 'Your private page'
   document.title = `Handoff · ${body.client.name}`
   $('photo-label').hidden = !body.photosEnabled
-  $('welcome').hidden = false
   setupNotifications().catch(() => { $('notify').hidden = true })
   await loadReviews().catch(() => {})
+  // Shown only now, so a returning client never sees a flash of the wrong layout.
+  $('welcome').hidden = false
   $('tabs').hidden = false
   route()
   startLiveUpdates()
@@ -535,7 +567,7 @@ $('submit-form').addEventListener('submit', async (event) => {
     })
     $('submit-form').reset()
     $('photo-hint').textContent = ''
-    $('send-box').open = false // fold it away again; the confirmation shows above the bar
+    if (everShared) $('send-box').open = false // the drop-down folds away again; the confirmation shows above it
     showResult(true, 'Sent! Your manager has received it. You can send more any time.')
   } catch (err) {
     showResult(false, err.message)
