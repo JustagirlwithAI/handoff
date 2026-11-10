@@ -99,9 +99,21 @@ function showCopyBox({ intro, value, copyLabel = 'Copy', share, extra = [] }) {
   }
   const actions = el('div', 'actions')
   actions.append(...buttons, ...extra)
-  box.replaceChildren(document.createTextNode(intro), input, actions)
+  box.replaceChildren(closeButton(box), el('p', 'box-text', intro), input, actions)
   box.hidden = false
   scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+// The little X in the corner of the box at the top, so it never lingers once you
+// have copied or shared what it holds.
+function closeButton(box) {
+  const close = button('×', 'close', () => {
+    box.hidden = true
+    box.replaceChildren()
+  })
+  close.setAttribute('aria-label', 'Close')
+  close.title = 'Close'
+  return close
 }
 
 // Shows a freshly made link once. The server keeps only a fingerprint of it, so
@@ -125,7 +137,7 @@ function showNotice(message, buttons = []) {
   box.className = 'result ok'
   const actions = el('div', 'actions')
   actions.append(...buttons)
-  box.replaceChildren(document.createTextNode(message), ...(buttons.length ? [actions] : []))
+  box.replaceChildren(closeButton(box), el('p', 'box-text', message), ...(buttons.length ? [actions] : []))
   box.hidden = false
   scrollTo({ top: 0, behavior: 'smooth' })
 }
@@ -246,8 +258,11 @@ function timeline(share) {
 function shareRow(share, reload) {
   const item = el('li')
   const top = el('div', 'row')
+  const labels = el('span', 'labels')
+  labels.append(el('span', `badge ${share.status}`, STATUS_LABEL[share.status] || share.status))
+  if (share.status === 'changes' && share.editedAt) labels.append(el('span', 'badge ready', 'Edited in Buffer'))
   top.append(
-    el('span', `badge ${share.status}`, STATUS_LABEL[share.status] || share.status),
+    labels,
     button('Remove', 'link danger', async () => {
       if (!confirm('Stop sharing this post with the client?')) return
       try {
@@ -265,38 +280,44 @@ function shareRow(share, reload) {
   if (share.status !== 'waiting' && share.noteSaved === false) {
     item.append(el('div', 'hint', 'Saved here, but the Buffer Note could not be added.'))
   }
-  if (share.status !== 'approved') item.append(updateControl(share, reload))
+  // Only a post the client asked changes on needs a "send updated version". A post
+  // still waiting is kept in step with Buffer automatically.
+  if (share.status === 'changes') item.append(updateControl(share, reload))
   return item
 }
 
-// After the manager revises the post in Buffer: show the client the new version
-// and ask them again. One optional line tells them what changed.
+// After the client asked for changes and the post was revised in Buffer: one tap
+// sends the new version to the client. Handoff notices the edit by itself, so there
+// is nothing to refresh. An optional line can tell the client what changed.
 function updateControl(share, reload) {
   const wrap = el('div', 'update')
-  const label = share.status === 'changes' ? 'Send updated version' : 'Refresh from Buffer'
-  const start = button(label, 'link', () => {
+  const send = async (note, trigger) => {
+    // Handoff checks Buffer every minute. If it has not seen an edit, say so.
+    if (!share.editedAt && !confirm("Handoff can't see an edit in Buffer yet, so the client would get the same version again.\n\nSend anyway?")) return
+    trigger.disabled = true
+    showError('')
+    try {
+      await api(`/api/shares/${share.id}/refresh`, { method: 'POST', body: JSON.stringify({ note }) })
+      await reload()
+    } catch (err) {
+      showError(err.message)
+      trigger.disabled = false
+    }
+  }
+  const main = button('Send updated version', share.editedAt ? 'btn small' : 'link', () => send('', main))
+  const withNote = button('Add a note first', 'link', () => {
     const note = el('input')
     note.type = 'text'
     note.maxLength = 300
-    note.placeholder = 'What changed? (optional, the client will see it)'
+    note.placeholder = 'What changed? (the client will see it)'
     note.setAttribute('aria-label', 'Note to the client')
-    const send = button('Send', 'btn small', async () => {
-      send.disabled = true
-      showError('')
-      try {
-        await api(`/api/shares/${share.id}/refresh`, { method: 'POST', body: JSON.stringify({ note: note.value }) })
-        await reload()
-      } catch (err) {
-        showError(err.message)
-        send.disabled = false
-      }
-    })
-    const cancel = button('Cancel', 'link', () => { delete wrap.dataset.editing; wrap.replaceChildren(start) })
+    const go = button('Send', 'btn small', () => send(note.value, go))
+    const cancel = button('Cancel', 'link', () => { delete wrap.dataset.editing; wrap.replaceChildren(main, withNote) })
     wrap.dataset.editing = '1' // the page will not redraw over a box you are typing in
-    wrap.replaceChildren(note, send, cancel)
+    wrap.replaceChildren(note, go, cancel)
     note.focus()
   })
-  wrap.append(start)
+  wrap.append(main, withNote)
   return wrap
 }
 
@@ -403,6 +424,8 @@ function clientCard(client, reload) {
   const chips = el('span', 'chips')
   for (const status of ['changes', 'waiting', 'approved']) {
     if (client.counts[status]) chips.append(chip(status, client.counts[status]))
+    // right after "needs changes": how many of those are edited and ready to send
+    if (status === 'changes' && client.counts.edited) chips.append(el('span', 'badge ready', `${client.counts.edited} ready to send`))
   }
   if (!chips.children.length) chips.append(el('span', 'tip', 'Nothing shared yet'))
   summary.append(chips)
@@ -476,7 +499,7 @@ function clientCard(client, reload) {
 const HOW_IT_WORKS = [
   ['Add a client', 'and send them their private link.'],
   ['They send content.', 'It lands in your Buffer as an Idea.'],
-  ['Turn it into a draft in Buffer.', 'Handoff shows it to them to approve.'],
+  ['Turn it into a draft in Buffer,', 'then tap Share a draft to show it to them for approval.'],
   ['Their answer comes back', 'as a note on your post, and a notification.'],
 ]
 
@@ -914,8 +937,15 @@ function showConnectedAt() {
   $('acct-since').textContent = connectedAt ? when(connectedAt) : 'Just now'
 }
 
-function renderAccount(session) {
+function renderAccount(session, settings = { autoShare: false }) {
   const { account } = session
+  segmented($('pref-share'), [['manual', 'I choose'], ['auto', 'Automatically']], settings.autoShare ? 'auto' : 'manual', async (value) => {
+    try {
+      await api('/api/settings', { method: 'POST', body: JSON.stringify({ autoShare: value === 'auto' }) })
+    } catch (err) {
+      showError(err.message)
+    }
+  })
   $('acct-name').textContent = account.name || 'Not set'
   $('acct-email').textContent = account.email || 'Not set'
   $('acct-org').textContent = (account.organizations || []).map((o) => o.name).join(', ') || 'Not set'
@@ -989,7 +1019,7 @@ async function start() {
   const { account } = session
   $('account').textContent = account.name || account.email
   $('appbar-actions').hidden = false
-  renderAccount(session)
+  renderAccount(session, await api('/api/settings').catch(() => ({ autoShare: false })))
   setupNotifications().catch(() => {
     // The browser could not start notifications: say so, rather than showing an empty box.
     $('notify-text').textContent = 'Notifications are not available in this browser right now. Try a regular (non-private) window, or another browser.'

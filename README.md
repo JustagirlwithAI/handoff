@@ -5,7 +5,7 @@
 Handoff is a small web app for social media managers who work with clients. The manager signs in with Buffer and creates a private link for each client. Through that link, with no login, the client can:
 
 1. **Send content**: text, photos, details and timing. It arrives in the manager's Buffer as an **Idea tagged with the client's name**.
-2. **Review posts**: when the manager turns that Idea into a draft in Buffer, it appears on the client's page automatically. The client sees how it will look, then **approves it or requests changes**. Their answer is saved as a **Note on the post in Buffer**.
+2. **Review posts**: when the manager turns that Idea into a draft in Buffer, they tap **Share a draft** to show it to the client (a draft is not always ready for client eyes, so nothing is shared without the manager's say-so; an optional automatic mode exists). The client sees how it will look, then **approves it or requests changes**. Their answer is saved as a **Note on the post in Buffer**.
 
 The manager gets one simple screen showing, per client, what is waiting, approved, or needs changes. She also gets a **push notification** when a client approves, asks for changes, or sends something new. Clients can turn on notifications too, so they hear when a post is ready or a revised version is waiting, with no chat app or email involved. After revising a post in Buffer, the manager clicks **Send updated version** to put the new version in front of the client.
 
@@ -24,10 +24,12 @@ The scopes requested are `account:read posts:read posts:write ideas:read ideas:w
 
 ## Design decisions
 
-- **The client's link is the only credential.** Links are 256 bits of randomness. Only a SHA-256 fingerprint is stored, so a leaked database does not leak working links. A link can be replaced at any time, which kills the old one. A client's page only ever shows that client's posts.
+- **The client's link is the only credential.** Links are 128 bits of randomness (22 characters). Only a SHA-256 fingerprint is stored, so a leaked database does not leak working links. A link can be replaced at any time, which kills the old one. A client's page only ever shows that client's posts.
 - **The manager's Buffer connection lives on the server, encrypted** (AES-256-GCM), because clients who are not signed in need the app to act for the manager. Buffer refresh tokens are single-use, so a database lock lets exactly one request renew them at a time.
 - **Opening a client page costs no Buffer API calls.** A copy of each shared post is stored when it is shared, and new drafts are looked up at most once a minute. App Clients have a small shared rate limit, so this matters.
-- **Matching drafts to clients is automatic but cautious.** Buffer does not record which Idea a post came from, so Handoff matches by the client's tag, then by what the client wrote. If it is not certain, it does nothing and the manager can share the draft by hand.
+- **Sharing is the manager's choice.** A draft is not always ready for a client to see, so by default it reaches a client only when the manager taps Share a draft. An optional automatic mode (Account, Preferences) matches drafts to clients itself: Buffer does not record which Idea a post came from, so it matches by the client's tag, then by what the client wrote, and does nothing when it is not certain.
+- **No refreshing, anywhere.** Pages ask a tiny "has anything changed?" question every few seconds and redraw only when the answer is yes. When a post the client asked changes on is edited in Buffer, Handoff notices and offers **Send updated version** as one tap.
+- **Finishing with a client.** Clients can be archived (their link stops working, their record stays) and the record exported as a spreadsheet for bookkeeping. The manager can also see when a client last opened their link, and send a reminder.
 - **Buffer's Free plan allows 3 tags.** Clients get their own tag while slots remain. Every Idea also starts with the client's name in its title, so nothing is lost after the tags run out.
 - **Feedback is stored twice.** It goes to Buffer as a Note and is also kept in Handoff's database, so it is never lost if Buffer is unavailable (Notes are experimental).
 - **Post metrics are not used**: they are not available to App Clients.

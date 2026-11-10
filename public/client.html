@@ -35,59 +35,81 @@
         <button id="notify-toggle" class="btn small" type="button"></button>
       </div>
 
-      <!-- A short confirmation after answering; it stays here even when no posts are left. -->
-      <div id="review-note" class="result ok" role="status" hidden></div>
+      <div id="tabs" class="tabs" role="tablist" aria-label="Your page" hidden>
+        <button id="tab-home" class="tab" role="tab" aria-selected="true" aria-controls="view-home" type="button">To review</button>
+        <button id="tab-history" class="tab" role="tab" aria-selected="false" aria-controls="view-history" type="button">History</button>
+      </div>
 
-      <section id="review" class="block" hidden>
-        <h2>Posts to review</h2>
-        <p id="review-sub">Your manager shared these drafts with you. Approve them, or tell us what to change.</p>
-        <div id="review-list"></div>
-      </section>
+      <!-- ===================== To review ===================== -->
+      <div id="view-home" role="tabpanel" aria-labelledby="tab-home">
+        <!-- A short confirmation after answering; it stays here even when no posts are left. -->
+        <div id="review-note" class="result ok" role="status" hidden></div>
 
-      <section id="welcome" class="block" hidden>
-        <h2>Send content for a post</h2>
-        <p>Tell your social media manager what you'd like posted. No account needed.</p>
+        <section id="review" class="block" hidden>
+          <h2>Posts to review</h2>
+          <p id="review-sub">Your manager shared these drafts with you. Approve them, or tell us what to change.</p>
+          <div id="review-list"></div>
+        </section>
 
-        <div class="card">
-          <form id="submit-form">
-            <label>
-              Title
-              <input id="f-title" type="text" maxlength="100" required placeholder="e.g. Weekend sale announcement" />
-            </label>
+        <p id="review-empty" class="tip empty-line" hidden>You're all caught up. Nothing needs your answer right now.</p>
 
-            <label>
-              Post text
-              <textarea id="f-text" rows="5" maxlength="2000" required placeholder="What should the post say?"></textarea>
-            </label>
+        <section id="welcome" class="block" hidden>
+          <div id="f-result" class="result" hidden></div>
 
-            <label id="photo-label" hidden>
-              <span>Photos <span class="opt">optional, up to 4</span></span>
-              <input id="f-photos" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple />
-              <span id="photo-hint" class="hint"></span>
-            </label>
+          <!-- Folded into a bar so it does not take over the page; tap it to open. -->
+          <details id="send-box" class="fold">
+            <summary>
+              <span class="fold-text">
+                <span class="fold-title">Send additional content for a post</span>
+                <span class="fold-sub">More ideas, links or details you did not include before</span>
+              </span>
+            </summary>
+            <div class="fold-body">
+              <form id="submit-form">
+                <label>
+                  Title
+                  <input id="f-title" type="text" maxlength="100" required placeholder="e.g. Weekend sale announcement" />
+                </label>
 
-            <label>
-              <span>Extra details <span class="opt">optional</span></span>
-              <textarea id="f-details" rows="3" maxlength="1000" placeholder="Links, hashtags, things to avoid…"></textarea>
-            </label>
+                <label>
+                  Post text
+                  <textarea id="f-text" rows="5" maxlength="2000" required placeholder="What should the post say?"></textarea>
+                </label>
 
-            <label>
-              <span>Preferred date <span class="opt">optional</span></span>
-              <input id="f-date" type="date" />
-            </label>
+                <label id="photo-label" hidden>
+                  <span>Photos <span class="opt">optional, up to 4</span></span>
+                  <input id="f-photos" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple />
+                  <span id="photo-hint" class="hint"></span>
+                </label>
 
-            <label>
-              <span>Timing notes <span class="opt">optional</span></span>
-              <input id="f-timing" type="text" maxlength="200" placeholder="e.g. Morning, before 10am" />
-            </label>
+                <label>
+                  <span>Extra details <span class="opt">optional</span></span>
+                  <textarea id="f-details" rows="3" maxlength="1000" placeholder="Links, hashtags, things to avoid…"></textarea>
+                </label>
 
-            <button id="f-send" class="btn" type="submit">Send</button>
-          </form>
-        </div>
+                <label>
+                  <span>Preferred date <span class="opt">optional</span></span>
+                  <input id="f-date" type="date" />
+                </label>
 
-        <div id="f-result" class="result" hidden></div>
-        <p class="hint">Keep this link to yourself. Anyone who has it can use this page.</p>
-      </section>
+                <label>
+                  <span>Timing notes <span class="opt">optional</span></span>
+                  <input id="f-timing" type="text" maxlength="200" placeholder="e.g. Morning, before 10am" />
+                </label>
+
+                <button id="f-send" class="btn" type="submit">Send</button>
+              </form>
+              <p class="hint">Keep this link to yourself. Anyone who has it can use this page.</p>
+            </div>
+          </details>
+        </section>
+      </div>
+
+      <!-- ======================= History ======================= -->
+      <div id="view-history" role="tabpanel" aria-labelledby="tab-history" hidden>
+        <div id="history-filters" class="filters" role="group" aria-label="Show"></div>
+        <div id="history-list"></div>
+      </div>
 
       <footer class="colophon"><a href="/privacy.html">Privacy</a></footer>
     </main>

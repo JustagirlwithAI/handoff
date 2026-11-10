@@ -554,3 +554,28 @@ details.folded > .card { margin: 0; border: 0; box-shadow: none; padding: 1rem 0
 
 .archived > summary::before { content: '▸'; width: auto; height: auto; border-radius: 0; background: none; font-size: 0.8rem; }
 .archived[open] > summary::before { content: '▾'; }
+
+/* A dismissible message at the top (new link, reminder, archived...) */
+.result { position: relative; }
+.result .close { position: absolute; top: 0.45rem; right: 0.5rem; width: 2rem; height: 2rem; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: inherit; font-size: 1.4rem; line-height: 1; cursor: pointer; opacity: 0.7; transition: transform 90ms ease-out, background-color 150ms ease, opacity 150ms ease; }
+.result .close:hover { background: rgba(0, 0, 0, 0.08); opacity: 1; }
+.result .close:active { transform: scale(0.9); }
+.result .box-text { margin: 0; padding-right: 2rem; }
+
+/* "Edited in Buffer / ready to send" */
+.badge.ready { background: var(--ok-bg); color: var(--ok); }
+.labels { display: inline-flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+
+/* A section folded into a tappable bar (client page: send additional content) */
+.fold { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.fold > summary { position: relative; display: block; list-style: none; cursor: pointer; padding: 0.9rem 2.6rem 0.9rem 1rem; min-height: 3.5rem; -webkit-tap-highlight-color: transparent; transition: background-color 120ms ease; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary:hover { background: var(--fill); }
+.fold > summary:active { background: var(--fill-strong); }
+.fold > summary::after { content: ''; position: absolute; right: 1.1rem; top: 50%; width: 0.5rem; height: 0.5rem; margin-top: -0.35rem; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform 180ms ease; }
+.fold[open] > summary::after { transform: rotate(45deg); }
+.fold-title { display: block; font-weight: 650; letter-spacing: -0.01em; }
+.fold-sub { display: block; color: var(--muted); font-size: 0.85rem; margin-top: 0.1rem; }
+.fold-body { padding: 0.25rem 1rem 1rem; border-top: 1px solid var(--line); }
+.fold-body form { margin-top: 0.9rem; }
+.empty-line { margin: 1rem 0 0; }

@@ -71,3 +71,25 @@ test('a post scheduled in Buffer reaches the client; approved wording is never c
   assert.equal(sameSnapshot(old, { ...old, images: [{ url: 'a' }] }), false)
   void post
 })
+
+const { editedState, contentDiffers } = await import('../lib/approvals.js')
+
+test('a "changes requested" post is flagged once it has been edited in Buffer', () => {
+  const seen = { text: 'Old caption', service: 'linkedin', channel: 'Page', dueAt: null, images: [{ type: 'image', url: 'https://x/1.jpg' }] }
+  const post = (over) => ({ id: 'p1', ...seen, ...over })
+  const index = [
+    { id: 's-changes', post_id: 'p1', status: 'changes', snapshot: seen },
+    { id: 's-waiting', post_id: 'p1', status: 'waiting', snapshot: seen },
+    { id: 's-approved', post_id: 'p1', status: 'approved', snapshot: seen },
+  ]
+  // edited words: flagged, and only the "changes" one counts
+  assert.deepEqual(editedState([post({ text: 'New caption' })], index), { edited: ['s-changes'], unedited: [] })
+  // a new photo counts too
+  assert.deepEqual(editedState([post({ images: [{ type: 'image', url: 'https://x/2.jpg' }] })], index).edited, ['s-changes'])
+  // scheduling or moving it is NOT an edit worth re-sending
+  assert.deepEqual(editedState([post({ dueAt: '2026-12-01T10:00:00Z', channel: 'Other' })], index), { edited: [], unedited: ['s-changes'] })
+  // an unchanged post is not flagged, and a post gone from Buffer is left alone
+  assert.deepEqual(editedState([post({})], index), { edited: [], unedited: ['s-changes'] })
+  assert.deepEqual(editedState([], index), { edited: [], unedited: [] })
+  assert.equal(contentDiffers(seen, { ...seen }), false)
+})

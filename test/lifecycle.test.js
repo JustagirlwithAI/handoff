@@ -96,3 +96,39 @@ test('a reminder needs something waiting, and cannot be sent over and over', nee
     await db.deleteClient(owner, client.id)
   }
 })
+
+test('drafts are shared only when the manager chooses, unless they switch automatic sharing on', needsDb, async () => {
+  const { neon } = await import('@neondatabase/serverless')
+  const sql = neon(DATABASE_URL)
+  const owner = `life-auto-${Date.now()}`
+  await sql`INSERT INTO owners (account_id, access_token_enc, refresh_token_enc, expires_at, connected_at)
+            VALUES (${owner}, 'x', 'x', 0, 0)`
+  try {
+    assert.equal(await db.getAutoShare(owner), false, 'off by default')
+    await db.setAutoShare(owner, true)
+    assert.equal(await db.getAutoShare(owner), true)
+    await db.setAutoShare(owner, false)
+    assert.equal(await db.getAutoShare(owner), false)
+    assert.equal(await db.getAutoShare(`nobody-${Date.now()}`), false)
+  } finally {
+    await sql`DELETE FROM owners WHERE account_id = ${owner}`
+  }
+})
+
+test('the edited-in-Buffer flag is set, kept, and cleared when a new version is sent', needsDb, async () => {
+  const owner = `life-edit-${Date.now()}`
+  const { client } = await db.createClient(owner, `LifeEdit ${Date.now()}`)
+  try {
+    const id = await db.createShare(owner, client.id, 'lifepost0201', snap('First'))
+    await db.recordDecision(id, { status: 'changes', feedback: 'Fix it', noteSaved: true })
+    await db.markEdited([id])
+    const flagged = (await db.listSharesForOwner(owner))[0].edited_at
+    assert.ok(flagged instanceof Date)
+    await db.markEdited([id]) // marking again keeps the first time
+    assert.equal((await db.listSharesForOwner(owner))[0].edited_at.getTime(), flagged.getTime())
+    await db.refreshShare(owner, id, snap('Second'), '')
+    assert.equal((await db.listSharesForOwner(owner))[0].edited_at, null, 'sending the new version clears it')
+  } finally {
+    await db.deleteClient(owner, client.id)
+  }
+})

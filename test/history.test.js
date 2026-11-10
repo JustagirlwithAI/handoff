@@ -150,3 +150,31 @@ test('what a client sent is kept in full too', needsDb, async () => {
     await db.deleteClient(owner, client.id)
   }
 })
+
+test("a client's History shows only their own entries, never the manager's reminders", needsDb, async () => {
+  const owner = `hist-client-${Date.now()}`
+  const a = (await db.createClient(owner, `HistA ${Date.now()}`)).client
+  const b = (await db.createClient(owner, `HistB ${Date.now()}`)).client
+  try {
+    const shareId = await db.createShare(owner, a.id, 'histpost0301', snap('Post for A'))
+    await db.recordDecision(shareId, { status: 'approved', feedback: 'Great', noteSaved: true })
+    await db.logClientEvent(a.id, 'nudged', 'Sent to their device')       // internal: must stay hidden
+    await db.createShare(owner, b.id, 'histpost0302', snap('Post for B')) // someone else's client
+
+    const mine = await db.listClientEvents(a.id)
+    assert.deepEqual(mine.map((e) => e.kind), ['approved', 'shared'])
+    assert.ok(mine.every((e) => e.created_at instanceof Date))
+    assert.deepEqual((await db.listClientEvents(a.id, 'approved')).map((e) => e.kind), ['approved'])
+    assert.equal((await db.listClientEvents(b.id)).length, 1)
+
+    // one client can never open another client's entry, or an internal one
+    const entry = await db.getClientEvent(a.id, mine[0].id)
+    assert.equal(entry.snapshot.text, 'Post for A')
+    assert.equal(await db.getClientEvent(b.id, mine[0].id), null)
+    const nudge = (await db.listEvents(owner, 'nudged'))[0]
+    assert.equal(await db.getClientEvent(a.id, nudge.id), null)
+  } finally {
+    await db.deleteClient(owner, a.id)
+    await db.deleteClient(owner, b.id)
+  }
+})

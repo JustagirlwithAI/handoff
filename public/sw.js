@@ -7,7 +7,7 @@ self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim(
 // A client's page tells us its own address, so that tapping a notification can
 // take them back to it (the address contains their private link, so it is kept
 // only on their own device, never sent anywhere).
-const CLIENT_PATH = /^\/c\/[A-Za-z0-9_-]{43}$/
+const CLIENT_PATH = /^\/c\/(?:[A-Za-z0-9_-]{22}|[A-Za-z0-9_-]{43})$/
 const META_CACHE = 'handoff-meta'
 const META_KEY = '/__client-path'
 

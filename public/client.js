@@ -180,6 +180,7 @@ async function loadReviews() {
   if (!res.ok) throw new Error(data.error || 'Could not load your posts.')
   const count = data.shares.length
   $('review').hidden = count === 0
+  $('review-empty').hidden = count > 0 // a calm line when nothing needs an answer
   $('review-list').replaceChildren(...data.shares.map(reviewCard))
   $('review-sub').textContent = `You have ${count} post${count === 1 ? '' : 's'} to look at.`
 }
@@ -193,6 +194,183 @@ function showReviewNote(message) {
   noteTimer = setTimeout(() => { note.hidden = true }, 6000)
 }
 
+/* --------------------------------------------------------------- history */
+// The client's own record, the same way the manager has one: what was sent to
+// them, what they approved or asked about, and what they sent. Each entry opens
+// to show exactly what it contained.
+
+const KIND_LABEL = {
+  shared: 'Sent to you',
+  updated: 'Updated version received',
+  approved: 'You approved',
+  changes: 'You asked for changes',
+  submitted: 'You sent content',
+}
+const KIND_BADGE = { shared: '', updated: 'waiting', approved: 'approved', changes: 'changes', submitted: '' }
+const COMMENT_LEAD = { approved: 'You added: ', changes: 'You asked: ', updated: 'What changed: ' }
+const DETAIL_LABEL = {
+  shared: 'What was sent to you',
+  updated: 'The updated version',
+  approved: 'What you approved',
+  changes: 'The post you asked changes on',
+  submitted: 'What you sent',
+}
+const FILTERS = [['', 'All'], ['approved', 'Approved'], ['changes', 'Changes I asked for']]
+
+let currentView = 'home'
+let historyKind = ''
+
+const isHttps = (url) => typeof url === 'string' && /^https:\/\//i.test(url)
+
+function node(tag, className, text) {
+  const element = document.createElement(tag)
+  if (className) element.className = className
+  if (text !== undefined) element.textContent = text
+  return element
+}
+
+function dayLabel(date) {
+  const day = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const diff = Math.round((day(new Date()) - day(date)) / 86_400_000)
+  if (diff === 0) return 'Today'
+  if (diff === 1) return 'Yesterday'
+  return date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+}
+
+function photos(urls) {
+  const wrap = node('div', 'images')
+  for (const url of urls.filter(isHttps)) {
+    const img = node('img')
+    img.src = url
+    img.alt = ''
+    img.loading = 'lazy'
+    img.referrerPolicy = 'no-referrer'
+    wrap.append(img)
+  }
+  return wrap
+}
+
+function eventDetail(d) {
+  const nodes = [node('p', 'detail-label', DETAIL_LABEL[d.kind] || 'Details')]
+  const box = node('div', 'detail-post')
+  const p = d.post
+  if (d.kind === 'submitted') {
+    const list = node('dl', 'kv')
+    for (const [label, value] of [['Title', p.title], ['Post text', p.text], ['Extra details', p.details], ['Timing notes', p.timing], ['Preferred date', p.date]]) {
+      if (!value) continue
+      list.append(node('dt', '', label), node('dd', 'pre', String(value)))
+    }
+    box.append(list)
+    if ((p.photos || []).some(isHttps)) box.append(photos(p.photos))
+  } else {
+    const where = [p.service, p.channel].filter(Boolean).join(' · ')
+    if (where) box.append(node('p', 'hint', where))
+    box.append(node('p', 'post-text', p.text || '(No text)'))
+    const urls = (p.images || []).map((i) => i.url)
+    if (urls.some(isHttps)) box.append(photos(urls))
+    const due = p.dueAt ? new Date(p.dueAt) : null
+    box.append(node('p', 'hint', due && !Number.isNaN(due.getTime()) ? `Planned for ${when(due)}` : 'Not scheduled'))
+  }
+  nodes.push(box)
+  if (d.comment && d.kind !== 'submitted') nodes.push(node('p', 'event-comment', `${COMMENT_LEAD[d.kind] || ''}"${d.comment}"`))
+  if (!d.exact) nodes.push(node('p', 'hint', 'This is an older entry. Its exact wording at that moment was not saved.'))
+  return nodes
+}
+
+function eventCard(event, date) {
+  const card = node('details', 'event')
+  const summary = node('summary')
+  const top = node('div', 'event-top')
+  const stamp = node('time', 'event-time', when(date))
+  stamp.dateTime = date.toISOString()
+  top.append(node('span', `badge ${KIND_BADGE[event.kind] || ''}`, KIND_LABEL[event.kind] || event.kind), stamp)
+  summary.append(top)
+  if (event.text) {
+    const flat = event.text.replace(/\s+/g, ' ').trim()
+    summary.append(node('p', 'event-text', `${event.service ? `[${event.service}] ` : ''}${flat.length > 140 ? `${flat.slice(0, 139).trimEnd()}…` : flat}`))
+  }
+  if (event.comment) summary.append(node('p', 'event-comment', `${COMMENT_LEAD[event.kind] || ''}"${event.comment}"`))
+  card.append(summary)
+
+  const detail = node('div', 'event-detail')
+  card.append(detail)
+  let loaded = false
+  card.addEventListener('toggle', async () => {
+    if (!card.open || loaded) return
+    loaded = true
+    detail.replaceChildren(node('p', 'hint', 'Loading…'))
+    try {
+      const res = await fetch(api(`/history/${encodeURIComponent(event.id)}`))
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Could not load this entry.')
+      detail.replaceChildren(...eventDetail(data))
+    } catch (err) {
+      loaded = false
+      detail.replaceChildren(node('p', 'hint', err.message))
+    }
+  })
+  return card
+}
+
+function renderFilters() {
+  $('history-filters').replaceChildren(...FILTERS.map(([kind, label]) => {
+    const chip = node('button', `filter${kind === historyKind ? ' on' : ''}`, label)
+    chip.type = 'button'
+    chip.setAttribute('aria-pressed', String(kind === historyKind))
+    chip.addEventListener('click', () => {
+      historyKind = kind
+      renderFilters()
+      loadHistory()
+    })
+    return chip
+  }))
+}
+
+async function loadHistory() {
+  const list = $('history-list')
+  try {
+    const res = await fetch(api(`/history${historyKind ? `?kind=${encodeURIComponent(historyKind)}` : ''}`))
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'Could not load your history.')
+    if (!data.events.length) {
+      list.replaceChildren(node('p', 'tip empty-line', historyKind ? 'Nothing like that yet.' : 'Nothing here yet. Posts you review, and content you send, will be listed here.'))
+      return
+    }
+    const nodes = []
+    let lastDay = ''
+    for (const event of data.events) {
+      const date = new Date(event.at)
+      const label = dayLabel(date)
+      if (label !== lastDay) {
+        nodes.push(node('h3', 'day', label))
+        lastDay = label
+      }
+      nodes.push(eventCard(event, date))
+    }
+    list.replaceChildren(...nodes)
+  } catch (err) {
+    list.replaceChildren(node('p', 'hint', err.message))
+  }
+}
+
+// Two places on this page, each with its own address so Back works:
+// (nothing) the posts to review, and #history.
+function route() {
+  currentView = location.hash === '#history' ? 'history' : 'home'
+  const onHistory = currentView === 'history'
+  $('view-home').hidden = onHistory
+  $('view-history').hidden = !onHistory
+  $('tab-home').setAttribute('aria-selected', String(!onHistory))
+  $('tab-history').setAttribute('aria-selected', String(onHistory))
+  if (onHistory) {
+    renderFilters()
+    loadHistory()
+  }
+}
+window.addEventListener('hashchange', route)
+$('tab-home').addEventListener('click', () => { location.hash = '' })
+$('tab-history').addEventListener('click', () => { location.hash = '#history' })
+
 /* ---------------------------------------------------------- live updates */
 // No refreshing needed. Every few seconds the page asks a tiny question, "has
 // anything changed?", and reloads its posts only when the answer is yes. A
@@ -201,6 +379,13 @@ function showReviewNote(message) {
 // Do not redraw while the client is in the middle of writing a comment.
 function typing() {
   return [...$('review-list').querySelectorAll('textarea')].some((t) => t.value || t === document.activeElement)
+}
+
+// Reload what is on screen: the posts to review, and the History if that tab is open
+// (but never collapse a History entry the client is reading).
+async function refresh() {
+  await loadReviews().catch(() => {})
+  if (currentView === 'history' && !document.querySelector('#history-list details[open]')) await loadHistory()
 }
 
 let seenPulse = null
@@ -213,7 +398,7 @@ async function checkForChanges() {
     const first = seenPulse === null
     if (pulse !== seenPulse) {
       seenPulse = pulse
-      if (!first) await loadReviews()
+      if (!first) await refresh()
     }
   } catch {
     // A dropped connection: try again on the next tick.
@@ -224,12 +409,12 @@ function startLiveUpdates() {
   checkForChanges()
   setInterval(checkForChanges, 5000)
   // Every minute, a full look as well: it also notices changes made in Buffer.
-  setInterval(() => { if (!document.hidden && !typing()) loadReviews().catch(() => {}) }, 60_000)
+  setInterval(() => { if (!document.hidden && !typing()) refresh() }, 60_000)
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && !typing()) loadReviews().catch(() => {})
+    if (!document.hidden && !typing()) refresh()
   })
   navigator.serviceWorker?.addEventListener('message', (event) => {
-    if (event.data?.type === 'refresh' && !typing()) loadReviews().catch(() => {})
+    if (event.data?.type === 'refresh' && !typing()) refresh()
   })
 }
 
@@ -316,6 +501,8 @@ async function start() {
   $('welcome').hidden = false
   setupNotifications().catch(() => { $('notify').hidden = true })
   await loadReviews().catch(() => {})
+  $('tabs').hidden = false
+  route()
   startLiveUpdates()
 }
 
@@ -348,7 +535,8 @@ $('submit-form').addEventListener('submit', async (event) => {
     })
     $('submit-form').reset()
     $('photo-hint').textContent = ''
-    showResult(true, 'Sent! Your manager has received it. You can send another one any time.')
+    $('send-box').open = false // fold it away again; the confirmation shows above the bar
+    showResult(true, 'Sent! Your manager has received it. You can send more any time.')
   } catch (err) {
     showResult(false, err.message)
   } finally {
