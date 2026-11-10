@@ -544,3 +544,13 @@ details.folded > .card { margin: 0; border: 0; box-shadow: none; padding: 1rem 0
 .detail-post .images { margin: 0.5rem 0; }
 .detail-post .kv { gap: 0.5rem 0.9rem; }
 .detail-post dd.pre { white-space: pre-wrap; font-weight: 500; }
+
+/* Opened status, reminders, archive */
+.client-name small.seen { display: block; margin-top: 0.1rem; color: var(--muted); font-size: 0.78rem; font-weight: 400; letter-spacing: 0; }
+.archived { margin-top: 1.5rem; }
+.archived-list { border-top: 0; }
+.archived-list li { padding: 0.75rem 0.25rem; }
+.archived-list .actions { margin-top: 0.6rem; }
+
+.archived > summary::before { content: '▸'; width: auto; height: auto; border-radius: 0; background: none; font-size: 0.8rem; }
+.archived[open] > summary::before { content: '▾'; }

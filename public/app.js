@@ -67,19 +67,20 @@ if (params.get('error')) {
 
 /* ------------------------------------------------------------ new links */
 
-// Shows a freshly made link once, with a Copy button. The server keeps only a
-// fingerprint of it, so this is the only time it can be displayed.
-function showLink(name, link) {
+// A box at the top for something worth copying or sharing: a new link, or a
+// ready-to-send reminder. It offers Copy, and the device's own share menu
+// (WhatsApp, Telegram, Slack, email... Handoff does not pick an app for you).
+function showCopyBox({ intro, value, copyLabel = 'Copy', share, extra = [] }) {
   const box = $('client-link')
   box.className = 'result ok'
   const input = el('input')
   input.type = 'text'
   input.readOnly = true
-  input.value = link
+  input.value = value
   input.addEventListener('focus', () => input.select())
-  const copy = button('Copy link', 'btn', async () => {
+  const copy = button(copyLabel, 'btn', async () => {
     try {
-      await navigator.clipboard.writeText(link)
+      await navigator.clipboard.writeText(value)
       copy.textContent = 'Copied!'
     } catch {
       input.select()
@@ -87,28 +88,113 @@ function showLink(name, link) {
     }
   })
   const buttons = [copy]
-  // The phone's or computer's own share menu: WhatsApp, Telegram, Slack, email,
-  // whatever the client prefers. Handoff does not pick an app for you.
-  if (navigator.share) {
+  if (navigator.share && share) {
     buttons.push(button('Share…', 'btn secondary', async () => {
       try {
-        await navigator.share({
-          title: 'Your Handoff page',
-          text: `Hi ${name}, here is your private page. You can send me content and approve posts there, with no account needed:`,
-          url: link,
-        })
+        await navigator.share(share)
       } catch {
         // They closed the share menu: nothing to do.
       }
     }))
   }
-  box.replaceChildren(
-    document.createTextNode(`Private link for ${name}. Copy or share it now: it can't be shown again, but you can always make a new one.`),
-    input,
-    el('div', 'actions'),
-  )
-  box.lastChild.append(...buttons)
+  const actions = el('div', 'actions')
+  actions.append(...buttons, ...extra)
+  box.replaceChildren(document.createTextNode(intro), input, actions)
   box.hidden = false
+  scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+// Shows a freshly made link once. The server keeps only a fingerprint of it, so
+// this is the only time it can be displayed.
+function showLink(name, link, intro) {
+  showCopyBox({
+    intro: intro || `Private link for ${name}. Copy or share it now: it can't be shown again, but you can always make a new one.`,
+    value: link,
+    copyLabel: 'Copy link',
+    share: {
+      title: 'Your Handoff page',
+      text: `Hi ${name}, here is your private page. You can send me content and approve posts there, with no account needed:`,
+      url: link,
+    },
+  })
+}
+
+// A short message at the top, optionally with buttons.
+function showNotice(message, buttons = []) {
+  const box = $('client-link')
+  box.className = 'result ok'
+  const actions = el('div', 'actions')
+  actions.append(...buttons)
+  box.replaceChildren(document.createTextNode(message), ...(buttons.length ? [actions] : []))
+  box.hidden = false
+  scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+// "3 h ago" for recent moments, a full date and time for older ones.
+function ago(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const minutes = Math.round((Date.now() - date.getTime()) / 60_000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes} min ago`
+  if (minutes < 24 * 60) return `${Math.round(minutes / 60)} h ago`
+  return when(date)
+}
+
+/* ---------------------------------------------------------------- export */
+// The full record for one client as a spreadsheet file (opens in Excel, Numbers
+// or Google Sheets). Built here in the browser so dates use YOUR time zone.
+
+function csvCell(value) {
+  let text = value == null ? '' : String(value)
+  // Stop a spreadsheet from treating text that starts with = + - @ as a formula.
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
+
+function buildRecordCsv(record) {
+  const rows = [
+    [`Handoff record for ${record.client.name}`],
+    [`Exported ${when(new Date())}`],
+    [],
+    ['Date', 'Time', 'Timestamp (UTC)', 'What happened', 'Channel', 'Post', 'Planned for', 'Request or note', 'Extra details', 'Timing notes', 'Photos'],
+  ]
+  for (const e of record.entries) {
+    const date = new Date(e.at)
+    const post = e.kind === 'submitted' ? [e.title, e.text].filter(Boolean).join('\n') : e.text
+    rows.push([
+      date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }),
+      date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', ...(timePref === 'auto' ? {} : { hour12: timePref === '12' }) }),
+      date.toISOString(),
+      KIND_LABEL[e.kind] || e.kind,
+      [e.service, e.channel].filter(Boolean).join(' · '),
+      post,
+      e.dueAt ? when(e.dueAt) : '',
+      e.comment || '',
+      e.details || '',
+      e.timing || '',
+      (e.photos || []).join(' '),
+    ])
+  }
+  return `﻿${rows.map((row) => row.map(csvCell).join(',')).join('\r\n')}\r\n`
+}
+
+async function exportRecord(clientId, name) {
+  showError('')
+  try {
+    const record = await api(`/api/clients/${clientId}/record`)
+    const blob = new Blob([buildRecordCsv(record)], { type: 'text/csv;charset=utf-8' })
+    const link = el('a')
+    const slug = name.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'client'
+    link.href = URL.createObjectURL(blob)
+    link.download = `Handoff-${slug}-record-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.append(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(link.href), 10_000)
+  } catch (err) {
+    showError(err.message)
+  }
 }
 
 $('client-form').addEventListener('submit', async (event) => {
@@ -259,6 +345,41 @@ function shareControl(client, reload) {
   return wrap
 }
 
+// Whether the client has looked at their page, and whether it was after the latest
+// post was sent to them. That is what tells the manager a reminder is worth sending.
+function seenText(client) {
+  const opened = client.lastOpenedAt ? new Date(client.lastOpenedAt) : null
+  const waiting = client.shares.filter((s) => s.status === 'waiting')
+  if (!opened) return 'Has not opened their link yet'
+  if (!waiting.length) return `Last opened ${ago(opened)}`
+  const latestSent = Math.max(...waiting.map((s) => new Date(s.updatedAt || s.createdAt).getTime()))
+  return opened.getTime() >= latestSent
+    ? `Opened ${ago(opened)}, no answer yet`
+    : `Last opened ${ago(opened)}, before the newest post`
+}
+
+// A reminder: sent to the client's device if they allowed notifications, and
+// otherwise a ready message to send in whichever app suits them.
+async function remind(client, reload) {
+  showError('')
+  try {
+    const result = await api(`/api/clients/${client.id}/nudge`, { method: 'POST' })
+    if (result.delivered) {
+      showNotice(`Reminder sent to ${client.name}'s device.`)
+    } else {
+      showCopyBox({
+        intro: `${client.name} has not turned on notifications, so nothing was sent to their device. Here is a message to send in whichever app suits them:`,
+        value: result.message,
+        copyLabel: 'Copy message',
+        share: { text: result.message },
+      })
+    }
+    await reload()
+  } catch (err) {
+    showError(err.message)
+  }
+}
+
 // Which client rows are open. A row you have not seen before opens by itself when
 // nothing is shared yet, so the next step (Share a draft) is right there.
 const openRows = new Set()
@@ -273,9 +394,12 @@ function clientCard(client, reload) {
   card.open = openRows.has(client.id)
   card.addEventListener('toggle', () => (card.open ? openRows.add(client.id) : openRows.delete(client.id)))
 
-  // The row you tap: name, a count per status, and a chevron.
+  // The row you tap: name (with when they last opened their link), a count per
+  // status, and a chevron.
   const summary = el('summary')
-  summary.append(el('span', 'client-name', client.name))
+  const nameCell = el('span', 'client-name', client.name)
+  nameCell.append(el('small', 'seen', seenText(client)))
+  summary.append(nameCell)
   const chips = el('span', 'chips')
   for (const status of ['changes', 'waiting', 'approved']) {
     if (client.counts[status]) chips.append(chip(status, client.counts[status]))
@@ -306,8 +430,11 @@ function clientCard(client, reload) {
     openBuffer.rel = 'noopener noreferrer'
     actions.append(openBuffer)
   }
+  if (client.counts.waiting) {
+    actions.append(button('Remind', 'btn small secondary', () => remind(client, reload)))
+  }
   if (client.counts.approved) {
-    actions.append(button(`${client.counts.approved} approved: see History`, 'link', () => { location.hash = '#history' }))
+    actions.append(button(`${client.counts.approved} approved in History`, 'link', () => { location.hash = '#history' }))
   }
   actions.append(
     button('New link', 'link', async () => {
@@ -320,9 +447,19 @@ function clientCard(client, reload) {
         showError(err.message)
       }
     }),
+    button('Archive', 'link', async () => {
+      if (!confirm(`Archive ${client.name}?\n\nTheir link stops working and they leave your list. Their history is kept, and you can export it or restore them any time under Archived.`)) return
+      try {
+        await api(`/api/clients/${client.id}/archive`, { method: 'POST' })
+        showNotice(`${client.name} is archived.`, [button('Export record', 'btn small', () => exportRecord(client.id, client.name))])
+        await reload()
+      } catch (err) {
+        showError(err.message)
+      }
+    }),
     el('span', 'spacer'),
     button('Delete client', 'link danger', async () => {
-      if (!confirm(`Delete ${client.name}? Their link will stop working.`)) return
+      if (!confirm(`Delete ${client.name} for good?\n\nTheir link stops working and their whole record is lost. If you might need the record later, Archive them instead.`)) return
       try {
         await api(`/api/clients/${client.id}`, { method: 'DELETE' })
         await reload()
@@ -353,10 +490,60 @@ function howItWorks(className) {
   return list
 }
 
+// Finished clients: out of the way, but their record can still be exported, they
+// can be brought back, or deleted for good.
+function renderArchived(archived, reload) {
+  const holder = $('archived')
+  if (!archived.length) {
+    holder.replaceChildren()
+    return
+  }
+  const group = el('details', 'help archived')
+  group.open = openArchived
+  group.addEventListener('toggle', () => { openArchived = group.open })
+  group.append(el('summary', '', `Archived (${archived.length})`))
+  const list = el('ul', 'board archived-list')
+  for (const client of archived) {
+    const item = el('li')
+    const top = el('div', 'row')
+    top.append(el('strong', '', client.name), el('span', 'tip', `Archived ${when(client.archivedAt)}`))
+    const actions = el('div', 'actions')
+    actions.append(
+      button('Export record', 'btn small', () => exportRecord(client.id, client.name)),
+      button('Restore', 'link', async () => {
+        try {
+          const { link } = await api(`/api/clients/${client.id}/restore`, { method: 'POST' })
+          showLink(client.name, link, `${client.name} is back. Their old link stays switched off, so here is a fresh one to send them:`)
+          await reload()
+        } catch (err) {
+          showError(err.message)
+        }
+      }),
+      el('span', 'spacer'),
+      button('Delete', 'link danger', async () => {
+        if (!confirm(`Delete ${client.name} for good?\n\nTheir whole record is lost and this cannot be undone. Export it first if you may need it.`)) return
+        try {
+          await api(`/api/clients/${client.id}`, { method: 'DELETE' })
+          await reload()
+        } catch (err) {
+          showError(err.message)
+        }
+      }),
+    )
+    item.append(top, el('div', 'when', `${client.entries} entr${client.entries === 1 ? 'y' : 'ies'} in their record`), actions)
+    list.append(item)
+  }
+  group.append(list)
+  holder.replaceChildren(group)
+}
+
+let openArchived = false
+
 async function loadOverview() {
   const container = $('clients')
   try {
-    const { clients } = await api('/api/overview')
+    const { clients, archived } = await api('/api/overview')
+    renderArchived(archived || [], loadOverview)
     // Clients that need attention come first.
     clients.sort((a, b) => (b.counts.changes - a.counts.changes) || (b.counts.waiting - a.counts.waiting))
     if (!clients.length) {
@@ -477,8 +664,9 @@ const KIND_LABEL = {
   updated: 'Updated version sent',
   shared: 'Shared for review',
   submitted: 'Sent new content',
+  nudged: 'Reminder sent',
 }
-const KIND_BADGE = { approved: 'approved', changes: 'changes', updated: 'waiting', shared: '', submitted: '' }
+const KIND_BADGE = { approved: 'approved', changes: 'changes', updated: 'waiting', shared: '', submitted: '', nudged: '' }
 const COMMENT_LEAD = { approved: 'They added: ', changes: 'They asked: ', updated: 'What changed: ' }
 const FILTERS = [['', 'All'], ['approved', 'Approved'], ['changes', 'Changes requested'], ['updated', 'Updates sent']]
 
@@ -527,6 +715,8 @@ function picture(url) {
 
 // The full content of one entry: the post, its photos and timing, and what was said.
 function eventDetail(d) {
+  // A reminder has no post of its own: just say how it went.
+  if (d.kind === 'nudged') return [el('p', 'detail-label', 'Reminder'), el('p', 'hint', d.comment || 'A reminder was sent.')]
   const nodes = [el('p', 'detail-label', DETAIL_LABEL[d.kind] || 'Details')]
   const box = el('div', 'detail-post')
 
@@ -680,6 +870,45 @@ function segmented(container, options, current, onPick) {
   render(current)
 }
 
+// Installing Handoff gives it its own icon and window, and makes its notifications
+// appear as "Handoff" with the app icon, instead of as a website.
+let installPrompt = null
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault()
+  installPrompt = event
+  renderInstall()
+})
+window.addEventListener('appinstalled', () => {
+  installPrompt = null
+  renderInstall()
+})
+
+function renderInstall() {
+  const text = $('install-text')
+  const install = $('install-btn')
+  const installed = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true
+  if (installed) {
+    text.textContent = '✓ Handoff is installed on this device. Its notifications appear as Handoff, with its icon.'
+    install.hidden = true
+    return
+  }
+  const apple = /iphone|ipad|ipod/i.test(navigator.userAgent)
+  text.textContent = installPrompt
+    ? 'Install Handoff to give it its own icon and window. Its notifications then appear as Handoff, not as a website.'
+    : apple
+      ? 'On an iPhone or iPad: tap Share, then Add to Home Screen. Notifications then appear as Handoff.'
+      : 'In Chrome or Edge, open the browser menu and choose Install Handoff, or use the install icon in the address bar. Notifications then appear as Handoff, not as a website.'
+  install.hidden = !installPrompt
+}
+
+$('install-btn').addEventListener('click', async () => {
+  if (!installPrompt) return
+  installPrompt.prompt()
+  await installPrompt.userChoice
+  installPrompt = null
+  renderInstall()
+})
+
 let connectedAt = null
 function showConnectedAt() {
   $('acct-since').textContent = connectedAt ? when(connectedAt) : 'Just now'
@@ -692,6 +921,7 @@ function renderAccount(session) {
   $('acct-org').textContent = (account.organizations || []).map((o) => o.name).join(', ') || 'Not set'
   connectedAt = session.connectedAt
   showConnectedAt()
+  renderInstall()
   $('avatar').textContent = (account.name || account.email || '?').trim().charAt(0)
   $('permissions').replaceChildren(...String(session.scope || '').split(/\s+/).filter(Boolean)
     .map((scope) => el('li', '', SCOPE_TEXT[scope] || scope)))

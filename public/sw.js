@@ -1,5 +1,5 @@
-// Handoff service worker. Its only job is to show notifications, even when the
-// Handoff page is closed.
+// Handoff service worker. Its job is to show notifications that look like they
+// come from a real app, even when the Handoff page is closed.
 
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()))
@@ -18,6 +18,8 @@ self.addEventListener('message', (event) => {
   }
 })
 
+const httpsOnly = (url) => (typeof url === 'string' && /^https:\/\//i.test(url) ? url : undefined)
+
 self.addEventListener('push', (event) => {
   let data = {}
   try {
@@ -25,15 +27,22 @@ self.addEventListener('push', (event) => {
   } catch {
     data = { title: 'Handoff', body: event.data ? event.data.text() : '' }
   }
-  const title = String(data.title || 'Handoff').slice(0, 100)
+  const symbol = typeof data.emoji === 'string' ? data.emoji.slice(0, 4) : ''
+  const title = `${symbol ? `${symbol} ` : ''}${String(data.title || 'Handoff').slice(0, 100)}`
+  const options = {
+    body: String(data.body || '').slice(0, 200),
+    icon: '/icon-notify-192.png',   // the rounded Handoff app icon
+    badge: '/badge-96.png',         // the small one-colour mark in a phone's status bar
+    tag: data.tag || 'handoff',     // a newer notification of the same kind replaces the older one
+    renotify: true,                 // ...but it still makes its sound/pop-up again
+    timestamp: Date.now(),
+    data: { kind: data.kind === 'client' ? 'client' : 'manager' },
+  }
+  const picture = httpsOnly(data.image)
+  if (picture) options.image = picture // the post's photo, where the device supports it
+
   event.waitUntil(Promise.all([
-    self.registration.showNotification(title, {
-      body: String(data.body || '').slice(0, 200),
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      tag: data.tag || 'handoff', // a newer notification of the same kind replaces the older one
-      data: { kind: data.kind === 'client' ? 'client' : 'manager' },
-    }),
+    self.registration.showNotification(title, options),
     // Any Handoff page that is open updates itself straight away.
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
       for (const page of windows) page.postMessage({ type: 'refresh' })

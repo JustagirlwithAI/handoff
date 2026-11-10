@@ -117,3 +117,21 @@ test('client notifications reach only that client, never the manager or other cl
     await db.deleteClient(owner, b.id).catch(() => {})
   }
 })
+
+const { reminderMessage } = await import('../lib/push.js')
+
+test('notifications carry a symbol, and only a safe https photo', () => {
+  assert.equal(decisionMessage('A', 'approved', '', 'x').emoji, '✅')
+  assert.equal(decisionMessage('A', 'changes', 'y', 'x').emoji, '✏️')
+  assert.equal(reviewMessage(false, 'x').emoji, '📝')
+  assert.equal(reviewMessage(true, 'x').emoji, '🔄')
+  assert.equal(submissionMessage('A', 'T').emoji, '📥')
+  assert.equal(reminderMessage(2).emoji, '⏰')
+
+  assert.equal(reviewMessage(false, 'x', 'https://cdn.example/p.jpg').image, 'https://cdn.example/p.jpg')
+  for (const bad of ['http://cdn.example/p.jpg', 'javascript:alert(1)', 'data:image/png;base64,AAAA', `https://x/${'a'.repeat(600)}`, null, undefined, 42]) {
+    assert.equal(reviewMessage(false, 'x', bad).image, undefined, String(bad).slice(0, 30))
+  }
+  assert.equal(reminderMessage(1).body, '1 post is waiting for your approval.')
+  assert.equal(reminderMessage(3).body, '3 posts are waiting for your approval.')
+})
