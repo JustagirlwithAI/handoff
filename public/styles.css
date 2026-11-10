@@ -586,3 +586,18 @@ details.folded > .card { margin: 0; border: 0; box-shadow: none; padding: 1rem 0
 .fold.static > summary:hover, .fold.static > summary:active { background: transparent; }
 .fold.static > summary::after { display: none; }
 .fold.static > summary { padding-right: 1rem; }
+
+/* Thumb-friendly sizes: on phones and touch screens, every small button is at least
+   40px tall (the laptop version keeps the compact sizes). */
+@media (max-width: 480px), (pointer: coarse) {
+  .link { min-height: 2.5rem; padding: 0 1rem; }
+  .seg button { min-height: 2.5rem; padding: 0 1rem; }
+  .filter { min-height: 2.5rem; padding: 0 1rem; }
+  .help > summary { min-height: 2.5rem; }
+  .btn.small { min-height: 2.5rem; }
+  .result .close { width: 2.5rem; height: 2.5rem; top: 0.25rem; right: 0.25rem; }
+  .result .box-text { padding-right: 2.5rem; }
+  .tab { min-height: 2.75rem; }
+  .me { min-height: 2.5rem; }
+  .client > summary { min-height: 3.75rem; }
+}

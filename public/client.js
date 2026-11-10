@@ -179,35 +179,46 @@ async function loadReviews() {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Could not load your posts.')
   const count = data.shares.length
+  // A "working client" has sent their first content, or been shared a draft. A
+  // brand-new client has done neither, and sees only the content form.
+  const isWorking = Boolean(data.everShared || data.everSubmitted)
   $('review').hidden = count === 0
-  // "All caught up" only makes sense once something has been shared with them.
-  $('review-empty').hidden = !(data.everShared && count === 0)
+  // Say plainly why the list is empty.
+  $('review-empty').hidden = !(isWorking && count === 0)
+  $('review-empty').textContent = data.everShared
+    ? "You're all caught up. Nothing needs your answer right now."
+    : 'Nothing to review yet. When your manager shares a draft with you, it will appear here.'
   $('review-list').replaceChildren(...data.shares.map(reviewCard))
   $('review-sub').textContent = `You have ${count} post${count === 1 ? '' : 's'} to look at.`
   // The tab says how many posts need their answer.
   $('tab-count').hidden = count === 0
   $('tab-count').textContent = String(count)
-  applyLayout(Boolean(data.everShared))
+  applyLayout(isWorking)
 }
 
-// The send form has two looks. Until the manager shares a first draft with this
-// client, it is the full form: that is the page's main job. From then on the
-// client's attention belongs to the review, so it folds into a bar.
-let everShared = null
-function applyLayout(shared) {
+// The page has two looks.
+//  - A NEW client (has sent nothing, been shown nothing): just the full content
+//    form, no tabs. That is the one thing to do.
+//  - A WORKING client: the tabs (To review, History), with the form folded into the
+//    "Send additional content" drop-down so the review gets the attention.
+// A client becomes a working client the moment they send their first content.
+let working = null
+function applyLayout(isWorking) {
   const box = $('send-box')
-  const first = everShared === null
-  const changed = everShared !== shared
-  everShared = shared
-  $('send-title').textContent = shared ? 'Send additional content for a post' : 'Send content for a post'
-  $('send-sub').textContent = shared
+  const first = working === null
+  const changed = working !== isWorking
+  working = isWorking
+  $('tabs').hidden = !isWorking
+  if (!isWorking && currentView === 'history') location.hash = '' // History does not exist yet
+  $('send-title').textContent = isWorking ? 'Send additional content for a post' : 'Send content for a post'
+  $('send-sub').textContent = isWorking
     ? 'More ideas, links or details you did not include before'
     : "Tell your social media manager what you'd like posted. No account needed."
-  box.classList.toggle('static', !shared) // full form: no fold arrow, cannot be collapsed
-  if (!shared) {
+  box.classList.toggle('static', !isWorking) // new client: no fold arrow, cannot be collapsed
+  if (!isWorking) {
     box.open = true
   } else if (changed) {
-    // A draft was just shared. Fold the form away, unless they are mid-way through writing.
+    // They just became a working client. Fold the form away, unless they are mid-way through writing.
     const typed = [...box.querySelectorAll('input:not([type=file]), textarea')].some((field) => field.value)
     if (first || !typed) box.open = false
   }
@@ -387,7 +398,8 @@ async function loadHistory() {
 // Two places on this page, each with its own address so Back works:
 // (nothing) the posts to review, and #history.
 function route() {
-  currentView = location.hash === '#history' ? 'history' : 'home'
+  // A new client has no History yet, so only the home view exists for them.
+  currentView = location.hash === '#history' && working !== false ? 'history' : 'home'
   const onHistory = currentView === 'history'
   $('view-home').hidden = onHistory
   $('view-history').hidden = !onHistory
@@ -533,7 +545,6 @@ async function start() {
   await loadReviews().catch(() => {})
   // Shown only now, so a returning client never sees a flash of the wrong layout.
   $('welcome').hidden = false
-  $('tabs').hidden = false
   route()
   startLiveUpdates()
 }
@@ -567,8 +578,12 @@ $('submit-form').addEventListener('submit', async (event) => {
     })
     $('submit-form').reset()
     $('photo-hint').textContent = ''
-    if (everShared) $('send-box').open = false // the drop-down folds away again; the confirmation shows above it
     showResult(true, 'Sent! Your manager has received it. You can send more any time.')
+    // Sending content makes them a working client: the page switches to the tabs,
+    // and the form becomes the drop-down, folded away again after each send.
+    await loadReviews().catch(() => {})
+    if (working) $('send-box').open = false
+    route()
   } catch (err) {
     showResult(false, err.message)
   } finally {

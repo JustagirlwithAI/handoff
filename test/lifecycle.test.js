@@ -149,3 +149,27 @@ test('a client counts as "shared with" from the moment a draft is first shared, 
     await db.deleteClient(owner, client.id)
   }
 })
+
+test('a client becomes a "working client" by sending content, or by being shared a draft', needsDb, async () => {
+  const owner = `life-working-${Date.now()}`
+  const a = (await db.createClient(owner, `LifeWorkA ${Date.now()}`)).client
+  const b = (await db.createClient(owner, `LifeWorkB ${Date.now()}`)).client
+  try {
+    // brand new: neither
+    assert.deepEqual([await db.clientEverShared(a.id), await db.clientEverSubmitted(a.id)], [false, false])
+
+    // a submission that has not reached Buffer yet does not count...
+    const pending = await db.createSubmission(a.id, { title: 'T', text: 'x', details: '', timing: '', date: '', photos: [] })
+    assert.equal(await db.clientEverSubmitted(a.id), false)
+    // ...one that has, does
+    await db.finishSubmission(pending, { ideaId: 'idea-x' })
+    assert.deepEqual([await db.clientEverShared(a.id), await db.clientEverSubmitted(a.id)], [false, true])
+
+    // the other client gets there the other way: the manager shared a draft with them
+    await db.createShare(owner, b.id, 'lifepost0501', snap('A draft'))
+    assert.deepEqual([await db.clientEverShared(b.id), await db.clientEverSubmitted(b.id)], [true, false])
+  } finally {
+    await db.deleteClient(owner, a.id)
+    await db.deleteClient(owner, b.id)
+  }
+})
