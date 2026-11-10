@@ -97,21 +97,28 @@ test('a reminder needs something waiting, and cannot be sent over and over', nee
   }
 })
 
-test('drafts are shared only when the manager chooses, unless they switch automatic sharing on', needsDb, async () => {
-  const { neon } = await import('@neondatabase/serverless')
-  const sql = neon(DATABASE_URL)
-  const owner = `life-auto-${Date.now()}`
-  await sql`INSERT INTO owners (account_id, access_token_enc, refresh_token_enc, expires_at, connected_at)
-            VALUES (${owner}, 'x', 'x', 0, 0)`
+test('the Buffer channels chosen for a client are saved, can be changed, and are private to the owner', needsDb, async () => {
+  const owner = `life-chan-${Date.now()}`
+  const { client } = await db.createClient(owner, `LifeChan ${Date.now()}`)
   try {
-    assert.equal(await db.getAutoShare(owner), false, 'off by default')
-    await db.setAutoShare(owner, true)
-    assert.equal(await db.getAutoShare(owner), true)
-    await db.setAutoShare(owner, false)
-    assert.equal(await db.getAutoShare(owner), false)
-    assert.equal(await db.getAutoShare(`nobody-${Date.now()}`), false)
+    assert.deepEqual((await db.listClients(owner))[0].channel_ids, [], 'none chosen at first')
+
+    await db.setClientChannels(owner, client.id, ['chan-linkedin-1', 'chan-instagram-2'])
+    assert.deepEqual((await db.listClients(owner))[0].channel_ids, ['chan-linkedin-1', 'chan-instagram-2'])
+
+    await db.setClientChannels(owner, client.id, ['chan-instagram-2']) // changed later
+    assert.deepEqual((await db.listClients(owner))[0].channel_ids, ['chan-instagram-2'])
+
+    await db.setClientChannels(owner, client.id, []) // and can be cleared again
+    assert.deepEqual((await db.listClients(owner))[0].channel_ids, [])
+
+    // another manager cannot change this client's channels
+    await assert.rejects(() => db.setClientChannels(`stranger-${Date.now()}`, client.id, ['x']), /not found/i)
+    // and an archived client cannot be changed
+    await db.archiveClient(owner, client.id)
+    await assert.rejects(() => db.setClientChannels(owner, client.id, ['x']), /not found/i)
   } finally {
-    await sql`DELETE FROM owners WHERE account_id = ${owner}`
+    await db.deleteClient(owner, client.id)
   }
 })
 

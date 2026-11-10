@@ -221,6 +221,19 @@ $('client-form').addEventListener('submit', async (event) => {
     })
     $('client-name').value = ''
     showLink(client.name, link)
+    // Straight after the link: which Buffer channels do you post to for them? A
+    // one-time choice that makes "Share a draft" show their drafts first.
+    client.channelIds = []
+    const picker = channelPicker(client, {
+      intro: `Which Buffer channels do you post to for ${client.name}? Choose them once, and Share a draft will show their drafts first.`,
+      onDone: (saved) => {
+        picker.replaceChildren(el('p', 'picker-intro', saved
+          ? 'Channels saved. You can change them any time from their row.'
+          : 'No problem. You can choose them any time from their row.'))
+        loadOverview()
+      },
+    })
+    $('client-link').append(el('hr', 'box-sep'), picker)
     await loadOverview()
   } catch (err) {
     showError(err.message)
@@ -321,8 +334,140 @@ function updateControl(share, reload) {
   return wrap
 }
 
-// A visible "Share a draft" button on every client card. Handoff already shows a
-// client any draft made from their own content; this is for drafts written from scratch.
+/* ------------------------------------------------------ client channels */
+// The Buffer channels you post to for a client, chosen once (and changeable any
+// time). They are how "Share a draft" knows which drafts to show first. Nothing is
+// guessed from the words of a post: you write each post in your own words.
+
+let channelCache = null
+async function loadChannels() {
+  if (channelCache && Date.now() - channelCache.at < 5 * 60_000) return channelCache.list
+  const { channels } = await api('/api/channels')
+  channelCache = { at: Date.now(), list: channels }
+  return channels
+}
+
+function channelPicker(client, { intro, saveLabel = 'Save channels', skipLabel = 'Skip for now', onDone }) {
+  const wrap = el('div', 'channel-picker')
+  wrap.append(el('p', 'picker-intro', intro))
+  const list = el('div', 'channel-list')
+  list.append(el('p', 'tip', 'Loading your Buffer channels…'))
+  const chosen = new Set(client.channelIds || [])
+
+  const save = button(saveLabel, 'btn small', async () => {
+    save.disabled = true
+    showError('')
+    try {
+      const result = await api(`/api/clients/${client.id}/channels`, { method: 'POST', body: JSON.stringify({ channelIds: [...chosen] }) })
+      client.channelIds = result.channelIds
+      onDone(true)
+    } catch (err) {
+      showError(err.message)
+      save.disabled = false
+    }
+  })
+  const actions = el('div', 'actions')
+  actions.append(save, button(skipLabel, 'link', () => onDone(false)))
+  wrap.append(list, actions)
+
+  loadChannels().then((channels) => {
+    if (!channels.length) {
+      list.replaceChildren(el('p', 'tip', 'No connected channels found in your Buffer account.'))
+      save.disabled = true
+      return
+    }
+    list.replaceChildren(...channels.map((channel) => {
+      const option = el('label', 'channel-option')
+      const box = el('input')
+      box.type = 'checkbox'
+      box.checked = chosen.has(channel.id)
+      box.addEventListener('change', () => (box.checked ? chosen.add(channel.id) : chosen.delete(channel.id)))
+      option.append(box, el('span', 'channel-name', channel.name), el('span', 'tip', channel.service))
+      return option
+    }))
+  }).catch((err) => {
+    list.replaceChildren(el('p', 'tip', err.message))
+    save.disabled = true
+  })
+  return wrap
+}
+
+// What you see after "Share a draft": the client's channel drafts first, everything
+// else folded under "Other drafts", and a search box. No draft is ever out of reach.
+function draftPicker(client, drafts, reload, close) {
+  const mine = new Set(client.channelIds || [])
+  let query = ''
+  let showOther = false
+
+  const wrap = el('div', 'draft-picker')
+  const head = el('div', 'picker-head')
+  head.append(el('strong', '', `Share a draft with ${client.name}`), button('Cancel', 'link', close))
+  const search = el('input')
+  search.type = 'search'
+  search.placeholder = 'Search your drafts'
+  search.setAttribute('aria-label', 'Search your drafts')
+  const list = el('div', 'draft-list')
+  wrap.append(head, search, list)
+
+  const row = (draft) => {
+    const item = el('div', 'draft')
+    const body = el('div', 'draft-body')
+    const where = [draft.service, draft.channel].filter(Boolean).join(' · ')
+    body.append(
+      el('div', 'tip', `${where}${draft.createdAt ? ` · ${ago(draft.createdAt)}` : ''}`),
+      el('div', 'draft-text', draft.text.replace(/\s+/g, ' ').trim() || '(no text)'),
+    )
+    const share = button('Share', 'btn small', async () => {
+      share.disabled = true
+      showError('')
+      try {
+        await api(`/api/clients/${client.id}/shares`, { method: 'POST', body: JSON.stringify({ postId: draft.id }) })
+        await reload()
+      } catch (err) {
+        showError(err.message)
+        share.disabled = false
+      }
+    })
+    item.append(body, share)
+    return item
+  }
+
+  const matches = (draft) => {
+    const q = query.trim().toLowerCase()
+    return !q || [draft.text, draft.channel, draft.service].some((field) => String(field || '').toLowerCase().includes(q))
+  }
+
+  const render = () => {
+    if (!drafts.length) {
+      list.replaceChildren(el('p', 'tip', 'No drafts to share yet. Create a draft in Buffer first, then come back.'))
+      return
+    }
+    const found = drafts.filter(matches)
+    const nodes = []
+    if (mine.size) {
+      const first = found.filter((d) => mine.has(d.channelId))
+      const rest = found.filter((d) => !mine.has(d.channelId))
+      nodes.push(el('div', 'picker-label', `For ${client.name}'s channels (${first.length})`))
+      nodes.push(...(first.length ? first.map(row) : [el('p', 'tip', 'No drafts for their channels yet.')]))
+      const open = showOther || query.trim() !== '' // a search never hides its results
+      const toggle = el('div', 'picker-label spread')
+      toggle.append(el('span', '', `Other drafts (${rest.length})`), button(open ? 'Hide' : 'Show', 'link', () => { showOther = !showOther; render() }))
+      nodes.push(toggle)
+      if (open) nodes.push(...(rest.length ? rest.map(row) : [el('p', 'tip', 'Nothing else.')]))
+    } else {
+      nodes.push(el('div', 'picker-label', `All drafts (${found.length}), newest first`))
+      nodes.push(...(found.length ? found.map(row) : [el('p', 'tip', 'No drafts match your search.')]))
+      nodes.push(el('p', 'tip', `Tip: use the Channels button on ${client.name} to see their drafts first.`))
+    }
+    list.replaceChildren(...nodes)
+  }
+  search.addEventListener('input', () => { query = search.value; render() })
+  render()
+  return wrap
+}
+
+// A visible "Share a draft" button on every client card. A draft reaches a client
+// only when you choose it here: a draft is not always ready for a client to see.
 function shareControl(client, reload) {
   const wrap = el('div', 'share-hand')
   const start = button('＋ Share a draft', 'btn small', async () => {
@@ -331,31 +476,9 @@ function shareControl(client, reload) {
     try {
       const { drafts } = await api('/api/drafts')
       const taken = new Set(client.shares.map((s) => s.postId))
-      const choices = drafts.filter((d) => !taken.has(d.id))
-      const cancel = button('Cancel', 'link', () => { delete wrap.dataset.editing; wrap.replaceChildren(start) })
-      wrap.dataset.editing = '1'
-      if (!choices.length) {
-        wrap.replaceChildren(el('span', 'tip', 'No drafts to share yet. Create a draft in Buffer first, then come back.'), cancel)
-        return
-      }
-      const select = el('select')
-      select.setAttribute('aria-label', 'Draft to share')
-      select.append(...choices.map((d) => {
-        const option = el('option', '', `[${d.service}] ${d.text.replace(/\s+/g, ' ').slice(0, 60) || '(no text)'}`)
-        option.value = d.id
-        return option
-      }))
-      const go = button('Share', 'btn small', async () => {
-        go.disabled = true
-        try {
-          await api(`/api/clients/${client.id}/shares`, { method: 'POST', body: JSON.stringify({ postId: select.value }) })
-          await reload()
-        } catch (err) {
-          showError(err.message)
-          go.disabled = false
-        }
-      })
-      wrap.replaceChildren(select, go, cancel)
+      const close = () => { delete wrap.dataset.editing; wrap.replaceChildren(start); start.disabled = false }
+      wrap.dataset.editing = '1' // the page will not redraw over a picker you are using
+      wrap.replaceChildren(draftPicker(client, drafts.filter((d) => !taken.has(d.id)), reload, close))
     } catch (err) {
       showError(err.message)
       start.disabled = false
@@ -459,7 +582,27 @@ function clientCard(client, reload) {
   if (client.counts.approved) {
     actions.append(button(`${client.counts.approved} approved in History`, 'link', () => { location.hash = '#history' }))
   }
+  // The Buffer channels you post to for this client: chosen once, changeable any time.
+  const channelEditor = el('div', 'channel-edit')
   actions.append(
+    button(client.channelIds?.length ? `Channels (${client.channelIds.length})` : 'Choose channels', 'link', () => {
+      if (channelEditor.childElementCount) {
+        delete channelEditor.dataset.editing
+        channelEditor.replaceChildren()
+        return
+      }
+      channelEditor.dataset.editing = '1' // the page will not redraw over a choice in progress
+      channelEditor.append(channelPicker(client, {
+        intro: `Which Buffer channels do you post to for ${client.name}?`,
+        saveLabel: 'Save',
+        skipLabel: 'Cancel',
+        onDone: (saved) => {
+          delete channelEditor.dataset.editing
+          channelEditor.replaceChildren()
+          if (saved) reload()
+        },
+      }))
+    }),
     button('New link', 'link', async () => {
       if (!confirm(`Make a new link for ${client.name}? The old link will stop working.`)) return
       try {
@@ -491,7 +634,7 @@ function clientCard(client, reload) {
       }
     }),
   )
-  body.append(actions)
+  body.append(actions, channelEditor)
   card.append(body)
   return card
 }
@@ -937,15 +1080,8 @@ function showConnectedAt() {
   $('acct-since').textContent = connectedAt ? when(connectedAt) : 'Just now'
 }
 
-function renderAccount(session, settings = { autoShare: false }) {
+function renderAccount(session) {
   const { account } = session
-  segmented($('pref-share'), [['manual', 'I choose'], ['auto', 'Automatically']], settings.autoShare ? 'auto' : 'manual', async (value) => {
-    try {
-      await api('/api/settings', { method: 'POST', body: JSON.stringify({ autoShare: value === 'auto' }) })
-    } catch (err) {
-      showError(err.message)
-    }
-  })
   $('acct-name').textContent = account.name || 'Not set'
   $('acct-email').textContent = account.email || 'Not set'
   $('acct-org').textContent = (account.organizations || []).map((o) => o.name).join(', ') || 'Not set'
@@ -1019,7 +1155,7 @@ async function start() {
   const { account } = session
   $('account').textContent = account.name || account.email
   $('appbar-actions').hidden = false
-  renderAccount(session, await api('/api/settings').catch(() => ({ autoShare: false })))
+  renderAccount(session)
   setupNotifications().catch(() => {
     // The browser could not start notifications: say so, rather than showing an empty box.
     $('notify-text').textContent = 'Notifications are not available in this browser right now. Try a regular (non-private) window, or another browser.'
