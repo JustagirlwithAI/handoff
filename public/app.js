@@ -115,7 +115,24 @@ function chip(status, count) {
   return el('span', `badge ${status}`, `${count} ${STATUS_LABEL[status].toLowerCase()}`)
 }
 
-function shareRow(share, reload, hideFeedback) {
+// Date and time in the reader's own time zone, e.g. "Nov 10, 3:42 PM".
+function when(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const sameYear = date.getFullYear() === new Date().getFullYear()
+  return date.toLocaleString(undefined, {
+    month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }), hour: 'numeric', minute: '2-digit',
+  })
+}
+
+// The line that says what happened to a post, and when.
+function timeline(share) {
+  if (share.status === 'changes') return `Changes requested ${when(share.decidedAt)}`
+  if (share.status === 'approved') return `Approved ${when(share.decidedAt)}`
+  return share.updatedAt ? `Updated version sent ${when(share.updatedAt)}` : `Shared ${when(share.createdAt)}`
+}
+
+function shareRow(share, reload) {
   const item = el('li')
   const top = el('div', 'row')
   top.append(
@@ -132,8 +149,8 @@ function shareRow(share, reload, hideFeedback) {
   )
   const flat = share.text.replace(/\s+/g, ' ').trim()
   item.append(top, el('div', 'hint', `[${share.service}] ${flat.length > 90 ? `${flat.slice(0, 89).trimEnd()}…` : flat}`))
-  // The newest change request is already shown at the top of the card.
-  if (share.feedback && !hideFeedback) item.append(el('div', 'feedback', `"${share.feedback}"`))
+  item.append(el('div', 'when', timeline(share)))
+  if (share.feedback) item.append(el('div', 'feedback', `They asked: "${share.feedback}"`))
   if (share.status !== 'waiting' && share.noteSaved === false) {
     item.append(el('div', 'hint', 'Saved here, but the Buffer Note could not be added.'))
   }
@@ -163,7 +180,8 @@ function updateControl(share, reload) {
         send.disabled = false
       }
     })
-    const cancel = button('Cancel', 'link', () => wrap.replaceChildren(start))
+    const cancel = button('Cancel', 'link', () => { delete wrap.dataset.editing; wrap.replaceChildren(start) })
+    wrap.dataset.editing = '1' // the page will not redraw over a box you are typing in
     wrap.replaceChildren(note, send, cancel)
     note.focus()
   })
@@ -182,7 +200,8 @@ function shareControl(client, reload) {
       const { drafts } = await api('/api/drafts')
       const taken = new Set(client.shares.map((s) => s.postId))
       const choices = drafts.filter((d) => !taken.has(d.id))
-      const cancel = button('Cancel', 'link', () => wrap.replaceChildren(start))
+      const cancel = button('Cancel', 'link', () => { delete wrap.dataset.editing; wrap.replaceChildren(start) })
+      wrap.dataset.editing = '1'
       if (!choices.length) {
         wrap.replaceChildren(el('span', 'tip', 'No drafts to share yet. Create a draft in Buffer first, then come back.'), cancel)
         return
@@ -246,19 +265,24 @@ function clientCard(client, reload) {
 
   const body = el('div', 'client-body')
   body.append(shareControl(client, reload))
-  if (client.shares.length) {
+  // Only posts that still need something are listed here. Approved ones live in History.
+  const open = client.shares.filter((s) => s.status !== 'approved')
+  if (open.length) {
     const list = el('ul', 'board')
-    list.append(...client.shares.map((s) => shareRow(s, reload, s === latest)))
+    list.append(...open.map((s) => shareRow(s, reload)))
     body.append(list)
   }
 
   const actions = el('div', 'actions')
   if (client.counts.changes) {
-    const open = el('a', 'btn small', 'Open Buffer')
-    open.href = 'https://publish.buffer.com'
-    open.target = '_blank'
-    open.rel = 'noopener noreferrer'
-    actions.append(open)
+    const openBuffer = el('a', 'btn small', 'Open Buffer')
+    openBuffer.href = 'https://publish.buffer.com'
+    openBuffer.target = '_blank'
+    openBuffer.rel = 'noopener noreferrer'
+    actions.append(openBuffer)
+  }
+  if (client.counts.approved) {
+    actions.append(button(`${client.counts.approved} approved: see History`, 'link', () => setTab('history')))
   }
   actions.append(
     button('New link', 'link', async () => {
@@ -310,8 +334,6 @@ async function loadOverview() {
     const { clients } = await api('/api/overview')
     // Clients that need attention come first.
     clients.sort((a, b) => (b.counts.changes - a.counts.changes) || (b.counts.waiting - a.counts.waiting))
-    $('clients-label').hidden = !clients.length
-
     if (!clients.length) {
       // First visit: explain the whole idea once, where it is needed.
       container.className = 'empty'
@@ -413,6 +435,147 @@ async function setupNotifications() {
   await render()
 }
 
+/* --------------------------------------------------------------- history */
+// An orderly record of everything: approvals, change requests (and what was
+// asked), updated versions sent, new content. Newest first, grouped by day.
+
+const KIND_LABEL = {
+  approved: 'Approved',
+  changes: 'Changes requested',
+  updated: 'Updated version sent',
+  shared: 'Shared for review',
+  submitted: 'Sent new content',
+}
+const KIND_BADGE = { approved: 'approved', changes: 'changes', updated: 'waiting', shared: '', submitted: '' }
+const COMMENT_LEAD = { approved: 'They added: ', changes: 'They asked: ', updated: 'What changed: ' }
+const FILTERS = [['', 'All'], ['approved', 'Approved'], ['changes', 'Changes requested'], ['updated', 'Updates sent']]
+
+let historyKind = ''
+let currentTab = 'clients'
+
+function dayLabel(date) {
+  const day = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const diff = Math.round((day(new Date()) - day(date)) / 86_400_000)
+  if (diff === 0) return 'Today'
+  if (diff === 1) return 'Yesterday'
+  return date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+}
+
+function renderFilters() {
+  $('history-filters').replaceChildren(...FILTERS.map(([kind, label]) => {
+    const chipButton = button(label, `filter${kind === historyKind ? ' on' : ''}`, () => {
+      historyKind = kind
+      renderFilters()
+      loadHistory()
+    })
+    chipButton.setAttribute('aria-pressed', String(kind === historyKind))
+    return chipButton
+  }))
+}
+
+function eventCard(event, date) {
+  const card = el('article', 'event')
+  const top = el('div', 'event-top')
+  const stamp = el('time', 'event-time', when(date))
+  stamp.dateTime = date.toISOString()
+  top.append(el('span', `badge ${KIND_BADGE[event.kind] || ''}`, KIND_LABEL[event.kind] || event.kind), el('strong', 'event-client', event.clientName), stamp)
+  card.append(top)
+  if (event.text) {
+    const flat = event.text.replace(/\s+/g, ' ').trim()
+    const clipped = flat.length > 140 ? `${flat.slice(0, 139).trimEnd()}…` : flat
+    card.append(el('p', 'event-text', `${event.service ? `[${event.service}] ` : ''}${clipped}`))
+  }
+  if (event.comment) card.append(el('p', 'event-comment', `${COMMENT_LEAD[event.kind] || ''}"${event.comment}"`))
+  return card
+}
+
+async function loadHistory() {
+  const list = $('history-list')
+  try {
+    const { events } = await api(`/api/history${historyKind ? `?kind=${encodeURIComponent(historyKind)}` : ''}`)
+    if (!events.length) {
+      list.replaceChildren(el('div', 'empty', historyKind
+        ? 'Nothing like that yet.'
+        : 'Nothing yet. Approvals, change requests and updates will appear here as they happen.'))
+      return
+    }
+    const nodes = []
+    let lastDay = ''
+    for (const event of events) {
+      const date = new Date(event.at)
+      const label = dayLabel(date)
+      if (label !== lastDay) {
+        nodes.push(el('h3', 'day', label))
+        lastDay = label
+      }
+      nodes.push(eventCard(event, date))
+    }
+    list.replaceChildren(...nodes)
+  } catch (err) {
+    list.replaceChildren(el('p', 'hint', err.message))
+  }
+}
+
+function setTab(name) {
+  currentTab = name
+  for (const tab of ['clients', 'history']) {
+    $(`view-${tab}`).hidden = tab !== name
+    $(`tab-${tab}`).setAttribute('aria-selected', String(tab === name))
+  }
+  history.replaceState({}, '', name === 'history' ? '#history' : location.pathname)
+  if (name === 'history') {
+    renderFilters()
+    loadHistory()
+  }
+}
+$('tab-clients').addEventListener('click', () => setTab('clients'))
+$('tab-history').addEventListener('click', () => setTab('history'))
+
+/* ---------------------------------------------------------- live updates */
+// No refreshing needed. Every few seconds the page asks a tiny question, "has
+// anything changed?", and redraws only when the answer is yes. A notification
+// arriving redraws it at once. It never redraws over something you are typing.
+
+function editing() {
+  const active = document.activeElement
+  return Boolean(
+    document.querySelector('#view-clients [data-editing]') ||
+    (active && active.closest('#clients') && ['INPUT', 'SELECT', 'TEXTAREA'].includes(active.tagName)) ||
+    $('client-name').value,
+  )
+}
+
+async function refresh() {
+  await loadOverview()
+  if (currentTab === 'history') await loadHistory()
+}
+
+let seenPulse = null
+async function checkForChanges() {
+  if (document.hidden || editing()) return
+  try {
+    const { pulse } = await api('/api/overview/pulse')
+    const first = seenPulse === null
+    if (pulse !== seenPulse) {
+      seenPulse = pulse
+      if (!first) await refresh()
+    }
+  } catch {
+    // A dropped connection: try again on the next tick.
+  }
+}
+
+function startLiveUpdates() {
+  checkForChanges()
+  setInterval(checkForChanges, 5000)
+  // Every minute, a full look as well: it also notices changes made in Buffer.
+  setInterval(() => { if (!document.hidden && !editing()) refresh() }, 60_000)
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && !editing()) refresh() })
+  navigator.serviceWorker?.addEventListener('message', (event) => {
+    if (event.data?.type === 'refresh' && !editing()) refresh()
+  })
+}
+
 async function start() {
   const session = await api('/api/session')
   if (!session.connected) {
@@ -425,8 +588,8 @@ async function start() {
   $('appbar-actions').hidden = false
   setupNotifications().catch(() => { $('notify').hidden = true })
   await loadOverview()
-  // Stay current while the dashboard is open.
-  setInterval(() => { if (!document.hidden) loadOverview() }, 60_000)
+  if (location.hash === '#history') setTab('history')
+  startLiveUpdates()
 }
 
 $('logout').addEventListener('click', async () => {

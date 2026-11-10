@@ -42,15 +42,26 @@
           <button id="notify-test" class="link" type="button" hidden>Send a test</button>
         </div>
 
-        <form id="client-form" class="inline-form">
-          <input id="client-name" type="text" maxlength="80" required placeholder="Add a client, e.g. Sunrise Bakery" aria-label="New client name" />
-          <button id="client-add" class="btn" type="submit">Add client</button>
-        </form>
-        <div id="client-link" class="result" hidden></div>
+        <div class="tabs" role="tablist" aria-label="Sections">
+          <button id="tab-clients" class="tab" role="tab" aria-selected="true" aria-controls="view-clients" type="button">Clients</button>
+          <button id="tab-history" class="tab" role="tab" aria-selected="false" aria-controls="view-history" type="button">History</button>
+        </div>
 
-        <div id="clients-label" class="section-label" hidden>Clients</div>
-        <div id="clients"></div>
-        <div id="help"></div>
+        <div id="view-clients" role="tabpanel" aria-labelledby="tab-clients">
+          <form id="client-form" class="inline-form">
+            <input id="client-name" type="text" maxlength="80" required placeholder="Add a client, e.g. Sunrise Bakery" aria-label="New client name" />
+            <button id="client-add" class="btn" type="submit">Add client</button>
+          </form>
+          <div id="client-link" class="result" hidden></div>
+
+          <div id="clients"></div>
+          <div id="help"></div>
+        </div>
+
+        <div id="view-history" role="tabpanel" aria-labelledby="tab-history" hidden>
+          <div id="history-filters" class="filters" role="group" aria-label="Show"></div>
+          <div id="history-list"></div>
+        </div>
       </div>
 
       <footer class="colophon">

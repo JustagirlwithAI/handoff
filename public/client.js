@@ -25,6 +25,16 @@ async function post(path, body) {
   return data
 }
 
+// Date and time in the reader's own time zone, e.g. "Nov 10, 3:42 PM".
+function when(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const sameYear = date.getFullYear() === new Date().getFullYear()
+  return date.toLocaleString(undefined, {
+    month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }), hour: 'numeric', minute: '2-digit',
+  })
+}
+
 // Sends one photo straight to Cloudinary using a one-time signature from us.
 async function uploadPhoto(file) {
   const sig = await post('/upload-signature', {})
@@ -61,12 +71,8 @@ function showResult(ok, message) {
 }
 
 /* ------------------------------------------------------------- reviewing */
-
-const STATUS_TEXT = {
-  waiting: 'Waiting for your answer',
-  approved: 'You approved this',
-  changes: 'You asked for changes',
-}
+// The page shows only posts that still need an answer. Once the client approves
+// or asks for changes, the post leaves their screen (the manager keeps the record).
 
 function reviewCard(share) {
   const card = document.createElement('div')
@@ -78,32 +84,29 @@ function reviewCard(share) {
   where.className = 'hint'
   where.textContent = [share.post.service, share.post.channel].filter(Boolean).join(' · ')
   const badge = document.createElement('span')
-  badge.className = `badge ${share.status}`
-  badge.textContent = STATUS_TEXT[share.status] || share.status
+  badge.className = 'badge waiting'
+  badge.textContent = 'Waiting for your answer'
   head.append(where, badge)
+  card.append(head)
+
+  // When it arrived, and after a revision, what changed.
+  const sent = document.createElement('p')
+  sent.className = 'hint'
+  sent.textContent = `${share.updated ? 'Updated version sent' : 'Sent to you'} ${when(share.sentAt)}`
+  card.append(sent)
+  if (share.updated) {
+    const update = document.createElement('p')
+    update.className = 'update-note'
+    update.textContent = share.managerNote
+      ? `From your manager: ${share.managerNote}`
+      : 'Your manager revised this post. Please take another look.'
+    card.append(update)
+  }
 
   const body = document.createElement('p')
   body.className = 'post-text'
   body.textContent = share.post.text || '(No text)'
-  // After a revision, say what changed so the client knows what to look at.
-  card.append(head)
-  if (share.updated && share.status === 'waiting') {
-    const update = document.createElement('p')
-    update.className = 'update-note'
-    update.textContent = share.managerNote
-      ? `Updated version. From your manager: ${share.managerNote}`
-      : 'Updated version. Please take another look.'
-    card.append(update)
-  }
   card.append(body)
-
-  // When it is planned to go out, so the client can judge the timing too.
-  const when = document.createElement('p')
-  when.className = 'hint'
-  const due = share.post.dueAt ? new Date(share.post.dueAt) : null
-  when.textContent = due && !Number.isNaN(due.getTime())
-    ? `Planned for ${due.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`
-    : 'Not scheduled yet'
 
   if (share.post.images?.length) {
     const images = document.createElement('div')
@@ -119,14 +122,13 @@ function reviewCard(share) {
     }
     card.append(images)
   }
-  card.append(when)
 
-  if (share.feedback) {
-    const said = document.createElement('p')
-    said.className = 'feedback'
-    said.textContent = `Your note: "${share.feedback}"`
-    card.append(said)
-  }
+  // When it is planned to go out, so the client can judge the timing too.
+  const plan = document.createElement('p')
+  plan.className = 'hint'
+  const due = share.post.dueAt ? new Date(share.post.dueAt) : null
+  plan.textContent = due && !Number.isNaN(due.getTime()) ? `Planned for ${when(due)}` : 'Not scheduled yet'
+  card.append(plan)
 
   const comment = document.createElement('textarea')
   comment.rows = 3
@@ -153,15 +155,11 @@ function reviewCard(share) {
     try {
       await post(`/shares/${encodeURIComponent(share.id)}/decision`, { decision, comment: comment.value })
       await loadReviews()
-      if (decision === 'approved') {
-        showReviewNote('Approved. Thank you! Your manager has been told.')
-        // Nothing left to decide? Take them straight to sending something new.
-        if (!$('review-list').querySelector(':scope > .card')) {
-          $('welcome').scrollIntoView({ behavior: 'smooth', block: 'start' })
-        }
-      } else {
-        showReviewNote('Sent. Your manager will see your changes.')
-      }
+      showReviewNote(decision === 'approved'
+        ? 'Approved. Thank you! Your manager has been told.'
+        : 'Sent. Your manager will see your changes.')
+      // Nothing left to answer? Go straight to sending something new.
+      if (!$('review-list').children.length) $('welcome').scrollIntoView({ behavior: 'smooth', block: 'start' })
     } catch (err) {
       message.className = 'result bad'
       message.textContent = err.message
@@ -173,34 +171,17 @@ function reviewCard(share) {
   changes.addEventListener('click', () => decide('changes'))
   actions.append(approve, changes)
   card.append(comment, actions, message)
-
-  // Once approved, the post folds away into one line so the page can focus on
-  // what still needs an answer. Tapping the line opens it again.
-  if (share.status !== 'approved') return card
-  const folded = document.createElement('details')
-  folded.className = 'folded'
-  const line = document.createElement('summary')
-  const flat = (share.post.text || '').replace(/\s+/g, ' ').trim()
-  const preview = flat.length > 60 ? `${flat.slice(0, 59).trimEnd()}…` : flat
-  line.textContent = `✓ Approved · ${[share.post.service, preview].filter(Boolean).join(' · ')}`
-  folded.append(line, card)
-  return folded
+  return card
 }
 
 async function loadReviews() {
   const res = await fetch(api('/shares'))
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Could not load your posts.')
-  $('review').hidden = data.shares.length === 0
-  // Posts that still need an answer first, approved ones last.
-  const order = { waiting: 0, changes: 1, approved: 2 }
-  const shares = [...data.shares].sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3))
-  $('review-list').replaceChildren(...shares.map(reviewCard))
-
-  const open = shares.filter((s) => s.status !== 'approved').length
-  $('review-sub').textContent = open
-    ? `You have ${open} post${open > 1 ? 's' : ''} to look at.`
-    : 'You are all caught up. Approved posts are folded away below.'
+  const count = data.shares.length
+  $('review').hidden = count === 0
+  $('review-list').replaceChildren(...data.shares.map(reviewCard))
+  $('review-sub').textContent = `You have ${count} post${count === 1 ? '' : 's'} to look at.`
 }
 
 let noteTimer
@@ -210,6 +191,46 @@ function showReviewNote(message) {
   note.hidden = false
   clearTimeout(noteTimer)
   noteTimer = setTimeout(() => { note.hidden = true }, 6000)
+}
+
+/* ---------------------------------------------------------- live updates */
+// No refreshing needed. Every few seconds the page asks a tiny question, "has
+// anything changed?", and reloads its posts only when the answer is yes. A
+// notification arriving also refreshes it at once.
+
+// Do not redraw while the client is in the middle of writing a comment.
+function typing() {
+  return [...$('review-list').querySelectorAll('textarea')].some((t) => t.value || t === document.activeElement)
+}
+
+let seenPulse = null
+async function checkForChanges() {
+  if (document.hidden || typing()) return
+  try {
+    const res = await fetch(api('/pulse'))
+    if (!res.ok) return
+    const { pulse } = await res.json()
+    const first = seenPulse === null
+    if (pulse !== seenPulse) {
+      seenPulse = pulse
+      if (!first) await loadReviews()
+    }
+  } catch {
+    // A dropped connection: try again on the next tick.
+  }
+}
+
+function startLiveUpdates() {
+  checkForChanges()
+  setInterval(checkForChanges, 5000)
+  // Every minute, a full look as well: it also notices changes made in Buffer.
+  setInterval(() => { if (!document.hidden && !typing()) loadReviews().catch(() => {}) }, 60_000)
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && !typing()) loadReviews().catch(() => {})
+  })
+  navigator.serviceWorker?.addEventListener('message', (event) => {
+    if (event.data?.type === 'refresh' && !typing()) loadReviews().catch(() => {})
+  })
 }
 
 /* --------------------------------------------------------- notifications */
@@ -295,6 +316,7 @@ async function start() {
   $('welcome').hidden = false
   setupNotifications().catch(() => { $('notify').hidden = true })
   await loadReviews().catch(() => {})
+  startLiveUpdates()
 }
 
 $('f-photos').addEventListener('change', () => {

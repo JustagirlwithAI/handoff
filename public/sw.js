@@ -26,7 +26,7 @@ self.addEventListener('push', (event) => {
     data = { title: 'Handoff', body: event.data ? event.data.text() : '' }
   }
   const title = String(data.title || 'Handoff').slice(0, 100)
-  event.waitUntil(
+  event.waitUntil(Promise.all([
     self.registration.showNotification(title, {
       body: String(data.body || '').slice(0, 200),
       icon: '/icon-192.png',
@@ -34,7 +34,11 @@ self.addEventListener('push', (event) => {
       tag: data.tag || 'handoff', // a newer notification of the same kind replaces the older one
       data: { kind: data.kind === 'client' ? 'client' : 'manager' },
     }),
-  )
+    // Any Handoff page that is open updates itself straight away.
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+      for (const page of windows) page.postMessage({ type: 'refresh' })
+    }),
+  ]))
 })
 
 async function openTarget(kind) {
