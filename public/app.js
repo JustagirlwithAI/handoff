@@ -34,6 +34,30 @@ async function api(path, options) {
   return body
 }
 
+// Personal preferences live in this browser only (nothing is sent to the server).
+const PREF_THEME = 'handoff-theme'
+const PREF_TIME = 'handoff-time'
+function readPref(key, fallback, allowed) {
+  try {
+    const value = localStorage.getItem(key)
+    return allowed.includes(value) ? value : fallback
+  } catch {
+    return fallback
+  }
+}
+function writePref(key, value) {
+  try { localStorage.setItem(key, value) } catch { /* private mode: the choice just will not stick */ }
+}
+let themePref = readPref(PREF_THEME, 'system', ['system', 'light', 'dark'])
+let timePref = readPref(PREF_TIME, 'auto', ['auto', '12', '24'])
+
+function applyTheme(value) {
+  themePref = value
+  if (value === 'light' || value === 'dark') document.documentElement.dataset.theme = value
+  else delete document.documentElement.dataset.theme
+  writePref(PREF_THEME, value)
+}
+
 // Surface an OAuth error that came back on the redirect, then clean the URL.
 const params = new URLSearchParams(location.search)
 if (params.get('error')) {
@@ -122,6 +146,7 @@ function when(value) {
   const sameYear = date.getFullYear() === new Date().getFullYear()
   return date.toLocaleString(undefined, {
     month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }), hour: 'numeric', minute: '2-digit',
+    ...(timePref === 'auto' ? {} : { hour12: timePref === '12' }),
   })
 }
 
@@ -282,7 +307,7 @@ function clientCard(client, reload) {
     actions.append(openBuffer)
   }
   if (client.counts.approved) {
-    actions.append(button(`${client.counts.approved} approved: see History`, 'link', () => setTab('history')))
+    actions.append(button(`${client.counts.approved} approved: see History`, 'link', () => { location.hash = '#history' }))
   }
   actions.append(
     button('New link', 'link', async () => {
@@ -383,9 +408,16 @@ async function setupNotifications() {
   }
 
   const registration = await navigator.serviceWorker.register('/sw.js')
+  const dismissed = () => readPref('handoff-nudge', '', ['done']) === 'done'
+  $('nudge-dismiss').addEventListener('click', () => {
+    writePref('handoff-nudge', 'done')
+    $('nudge').hidden = true
+  })
   const render = async () => {
     const current = await registration.pushManager.getSubscription()
     const blocked = Notification.permission === 'denied'
+    // A gentle reminder on the Clients screen, only until it is set up or dismissed.
+    $('nudge').hidden = Boolean(current) || blocked || dismissed()
     test.hidden = !current
     toggle.hidden = blocked
     toggle.disabled = false
@@ -516,20 +548,79 @@ async function loadHistory() {
   }
 }
 
-function setTab(name) {
-  currentTab = name
-  for (const tab of ['clients', 'history']) {
-    $(`view-${tab}`).hidden = tab !== name
-    $(`tab-${tab}`).setAttribute('aria-selected', String(tab === name))
-  }
-  history.replaceState({}, '', name === 'history' ? '#history' : location.pathname)
-  if (name === 'history') {
+/* ------------------------------------------------------ where you are */
+// Three places, each with its own address so the browser's Back button works:
+//   (nothing)  your clients
+//   #account   your account, preferences, notifications, permissions
+//   #history   the History tab inside Account
+function route() {
+  const view = location.hash === '#account' ? 'account' : location.hash === '#history' ? 'history' : 'clients'
+  currentTab = view
+  const onHistory = view === 'history'
+  $('view-clients').hidden = view !== 'clients'
+  $('view-account').hidden = view === 'clients'
+  $('panel-account').hidden = onHistory
+  $('panel-history').hidden = !onHistory
+  $('tab-account').setAttribute('aria-selected', String(!onHistory))
+  $('tab-history').setAttribute('aria-selected', String(onHistory))
+  if (onHistory) {
     renderFilters()
     loadHistory()
   }
+  window.scrollTo(0, 0)
 }
-$('tab-clients').addEventListener('click', () => setTab('clients'))
-$('tab-history').addEventListener('click', () => setTab('history'))
+window.addEventListener('hashchange', route)
+$('tab-account').addEventListener('click', () => { location.hash = '#account' })
+$('tab-history').addEventListener('click', () => { location.hash = '#history' })
+
+/* --------------------------------------------------------------- account */
+
+const SCOPE_TEXT = {
+  'account:read': 'See your name and Buffer organization',
+  'posts:read': 'Read your drafts and scheduled posts',
+  'posts:write': 'Create a tag for each client',
+  'ideas:read': 'Read your Ideas',
+  'ideas:write': "Add your clients' content as Ideas",
+  'notes:read': 'Read notes on your posts',
+  'notes:write': 'Add approvals and change requests as notes on your posts',
+  offline_access: 'Keep working for your clients while you are away',
+}
+
+function segmented(container, options, current, onPick) {
+  const render = (value) => container.replaceChildren(...options.map(([key, label]) => {
+    const choice = button(label, '', () => {
+      onPick(key)
+      render(key)
+    })
+    choice.setAttribute('aria-pressed', String(key === value))
+    return choice
+  }))
+  render(current)
+}
+
+let connectedAt = null
+function showConnectedAt() {
+  $('acct-since').textContent = connectedAt ? when(connectedAt) : 'Just now'
+}
+
+function renderAccount(session) {
+  const { account } = session
+  $('acct-name').textContent = account.name || 'Not set'
+  $('acct-email').textContent = account.email || 'Not set'
+  $('acct-org').textContent = (account.organizations || []).map((o) => o.name).join(', ') || 'Not set'
+  connectedAt = session.connectedAt
+  showConnectedAt()
+  $('avatar').textContent = (account.name || account.email || '?').trim().charAt(0)
+  $('permissions').replaceChildren(...String(session.scope || '').split(/\s+/).filter(Boolean)
+    .map((scope) => el('li', '', SCOPE_TEXT[scope] || scope)))
+  segmented($('pref-theme'), [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], themePref, applyTheme)
+  segmented($('pref-time'), [['auto', 'Auto'], ['12', '12-hour'], ['24', '24-hour']], timePref, (value) => {
+    timePref = value
+    writePref(PREF_TIME, value)
+    showConnectedAt()
+    refresh() // dates on screen change straight away
+  })
+}
 
 /* ---------------------------------------------------------- live updates */
 // No refreshing needed. Every few seconds the page asks a tiny question, "has
@@ -586,9 +677,15 @@ async function start() {
   const { account } = session
   $('account').textContent = account.name || account.email
   $('appbar-actions').hidden = false
-  setupNotifications().catch(() => { $('notify').hidden = true })
+  renderAccount(session)
+  setupNotifications().catch(() => {
+    // The browser could not start notifications: say so, rather than showing an empty box.
+    $('notify-text').textContent = 'Notifications are not available in this browser right now. Try a regular (non-private) window, or another browser.'
+    $('notify-toggle').hidden = true
+    $('nudge').hidden = true
+  })
   await loadOverview()
-  if (location.hash === '#history') setTab('history')
+  route()
   startLiveUpdates()
 }
 

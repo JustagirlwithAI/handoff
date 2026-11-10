@@ -86,3 +86,22 @@ test('the "has anything changed?" check moves when something happens, and only t
     await db.deleteClient(owner, client.id)
   }
 })
+
+test('History is ordered by when things really happened, not by when they were saved', needsDb, async () => {
+  const { neon } = await import('@neondatabase/serverless')
+  const sql = neon(DATABASE_URL)
+  const owner = `hist-order-${Date.now()}`
+  const { client } = await db.createClient(owner, `HistOrder ${Date.now()}`)
+  try {
+    // Saved in the "wrong" order on purpose: the newest event gets the lowest id.
+    const days = [0, 2, 1, 3] // days ago
+    for (const d of days) {
+      await sql`INSERT INTO events (client_id, kind, post_text, created_at)
+                VALUES (${client.id}, 'approved', ${`${d} days ago`}, now() - make_interval(days => ${d}))`
+    }
+    const order = (await db.listEvents(owner)).map((e) => e.post_text)
+    assert.deepEqual(order, ['0 days ago', '1 days ago', '2 days ago', '3 days ago'])
+  } finally {
+    await db.deleteClient(owner, client.id)
+  }
+})

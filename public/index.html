@@ -8,11 +8,13 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <meta name="theme-color" content="#283f3e" />
+    <!-- Applies a saved Light/Dark choice before the page paints, so there is no flash. -->
+    <script>try{var t=localStorage.getItem('handoff-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <header class="appbar">
-      <a class="brand" href="/">
+      <a class="brand" id="brand" href="#account" aria-label="Handoff: your account and settings">
         <span class="mark" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
             <path d="M4 7h16" /><path d="M4 12h10" /><path d="M4 17h6" />
@@ -21,8 +23,10 @@
         Handoff
       </a>
       <div id="appbar-actions" class="appbar-actions" hidden>
-        <span id="account" class="account"></span>
-        <button id="logout" class="link" type="button">Sign out</button>
+        <a id="me" class="me" href="#account" aria-label="Your account">
+          <span id="avatar" class="avatar" aria-hidden="true"></span>
+          <span id="account" class="account"></span>
+        </a>
       </div>
     </header>
 
@@ -36,18 +40,14 @@
       </section>
 
       <div id="app" hidden>
-        <div id="notify" class="notify" hidden>
-          <span id="notify-text"></span>
-          <button id="notify-toggle" class="btn small" type="button"></button>
-          <button id="notify-test" class="link" type="button" hidden>Send a test</button>
-        </div>
+        <!-- ============================ Clients ============================ -->
+        <div id="view-clients">
+          <div id="nudge" class="notify" hidden>
+            <span>Get a notification when a client answers.</span>
+            <a class="btn small" href="#account">Set up</a>
+            <button id="nudge-dismiss" class="link" type="button">Not now</button>
+          </div>
 
-        <div class="tabs" role="tablist" aria-label="Sections">
-          <button id="tab-clients" class="tab" role="tab" aria-selected="true" aria-controls="view-clients" type="button">Clients</button>
-          <button id="tab-history" class="tab" role="tab" aria-selected="false" aria-controls="view-history" type="button">History</button>
-        </div>
-
-        <div id="view-clients" role="tabpanel" aria-labelledby="tab-clients">
           <form id="client-form" class="inline-form">
             <input id="client-name" type="text" maxlength="80" required placeholder="Add a client, e.g. Sunrise Bakery" aria-label="New client name" />
             <button id="client-add" class="btn" type="submit">Add client</button>
@@ -58,9 +58,62 @@
           <div id="help"></div>
         </div>
 
-        <div id="view-history" role="tabpanel" aria-labelledby="tab-history" hidden>
-          <div id="history-filters" class="filters" role="group" aria-label="Show"></div>
-          <div id="history-list"></div>
+        <!-- ============================ Account ============================ -->
+        <div id="view-account" hidden>
+          <div class="subhead"><a id="back" class="link" href="#">‹ Clients</a></div>
+          <h1 class="page-title">Account</h1>
+
+          <div class="tabs" role="tablist" aria-label="Account sections">
+            <button id="tab-account" class="tab" role="tab" aria-selected="true" aria-controls="panel-account" type="button">Account</button>
+            <button id="tab-history" class="tab" role="tab" aria-selected="false" aria-controls="panel-history" type="button">History</button>
+          </div>
+
+          <div id="panel-account" role="tabpanel" aria-labelledby="tab-account">
+            <section class="panel">
+              <h2>You</h2>
+              <dl class="kv">
+                <dt>Name</dt><dd id="acct-name"></dd>
+                <dt>Email</dt><dd id="acct-email"></dd>
+                <dt>Buffer organization</dt><dd id="acct-org"></dd>
+                <dt>Connected</dt><dd id="acct-since"></dd>
+              </dl>
+              <p class="hint">You sign in with your Buffer account. Handoff never sees your Buffer password.</p>
+            </section>
+
+            <section class="panel">
+              <h2>Preferences</h2>
+              <div class="setting"><span>Appearance</span><div id="pref-theme" class="seg" role="group" aria-label="Appearance"></div></div>
+              <div class="setting"><span>Time format</span><div id="pref-time" class="seg" role="group" aria-label="Time format"></div></div>
+              <p class="hint">Saved on this device only.</p>
+            </section>
+
+            <section class="panel">
+              <h2>Notifications</h2>
+              <div id="notify" class="notify">
+                <span id="notify-text"></span>
+                <button id="notify-toggle" class="btn small" type="button"></button>
+                <button id="notify-test" class="link" type="button" hidden>Send a test</button>
+              </div>
+            </section>
+
+            <section class="panel">
+              <h2>What Handoff can do in your Buffer</h2>
+              <ul id="permissions" class="perms"></ul>
+              <p class="hint">You can remove Handoff's access at any time in your <a href="https://publish.buffer.com/settings" target="_blank" rel="noopener noreferrer">Buffer settings</a>.</p>
+            </section>
+
+            <section class="panel">
+              <div class="panel-actions">
+                <button id="logout" class="btn secondary" type="button">Sign out</button>
+                <a class="link" href="/privacy.html">Privacy</a>
+              </div>
+            </section>
+          </div>
+
+          <div id="panel-history" role="tabpanel" aria-labelledby="tab-history" hidden>
+            <div id="history-filters" class="filters" role="group" aria-label="Show"></div>
+            <div id="history-list"></div>
+          </div>
         </div>
       </div>
 
