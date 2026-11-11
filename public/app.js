@@ -529,6 +529,33 @@ async function remind(client, reload) {
 const openRows = new Set()
 const seenRows = new Set()
 
+const MAX_ANSWER_LINES = 3
+
+// One line on a client row: an icon, a bold label, and the client's own words in quotes.
+function answerLine(kind, label, quote) {
+  const line = el('div', `answer ${kind}`)
+  line.append(el('span', 'answer-icon', kind === 'chg' ? '✎' : kind === 'ok' ? '✓' : '+'))
+  const text = el('span', 'answer-text')
+  text.append(el('strong', '', label))
+  if (quote) text.append(` ${quote.lead}"${quote.text}"`)
+  line.append(text)
+  if (kind === 'chg') line.classList.add('change-line')
+  return line
+}
+
+function answerLines(client, fresh) {
+  const lines = []
+  const latest = client.shares.find((s) => s.status === 'changes' && s.feedback)
+  if (latest) lines.push(answerLine('chg', 'Changes requested:', { lead: '', text: latest.feedback }))
+  for (const f of fresh) {
+    if (f.kind === 'approved') lines.push(answerLine('ok', 'Approved', f.comment ? { lead: '· Note: ', text: f.comment } : null))
+    else if (f.kind === 'submitted') lines.push(answerLine('sent', 'Sent new content:', { lead: '', text: f.text || 'New content' }))
+  }
+  if (lines.length <= MAX_ANSWER_LINES) return lines
+  const hidden = lines.length - MAX_ANSWER_LINES
+  return [...lines.slice(0, MAX_ANSWER_LINES), el('div', 'answers-more', `and ${hidden} more in History`)]
+}
+
 function clientCard(client, reload) {
   if (!seenRows.has(client.id)) {
     seenRows.add(client.id)
@@ -542,6 +569,11 @@ function clientCard(client, reload) {
   // status, and a chevron.
   const summary = el('summary')
   const nameCell = el('span', 'client-name', client.name)
+  const fresh = client.fresh || []
+  if (fresh.length) {
+    card.classList.add('fresh')
+    nameCell.append(' ', el('span', 'new-tag', `${fresh.length} new`))
+  }
   nameCell.append(el('small', 'seen', seenText(client)))
   summary.append(nameCell)
   const chips = el('span', 'chips')
@@ -553,9 +585,15 @@ function clientCard(client, reload) {
   if (!chips.children.length) chips.append(el('span', 'tip', 'Nothing shared yet'))
   summary.append(chips)
 
-  // The newest change request, in one line, visible even when the row is closed.
-  const latest = client.shares.find((s) => s.status === 'changes' && s.feedback)
-  if (latest) summary.append(el('p', 'client-sub', `"${latest.feedback}"`))
+  // What the client said, visible even when the row is closed. The newest change
+  // request stays until an updated version is sent. Approvals and new content show
+  // only while they are new, and go away once the entry has been opened in History.
+  const answers = answerLines(client, fresh)
+  if (answers.length) {
+    const box = el('div', 'answers')
+    box.append(...answers)
+    summary.append(box)
+  }
   card.append(summary)
 
   const body = el('div', 'client-body')
@@ -705,10 +743,25 @@ function renderArchived(archived, reload) {
 
 let openArchived = false
 
+// How many client answers have not been opened yet, shown on your name (top right)
+// and on the History tab, so you know there is something new wherever you are.
+let unseenTotal = 0
+function setUnseen(count) {
+  unseenTotal = Math.max(0, count)
+  for (const host of [$('me'), $('tab-history')]) {
+    host.querySelector(':scope > .dot')?.remove()
+    if (!unseenTotal) continue
+    const dot = el('span', 'dot', String(unseenTotal))
+    dot.setAttribute('aria-label', `${unseenTotal} new`)
+    host.append(dot)
+  }
+}
+
 async function loadOverview() {
   const container = $('clients')
   try {
-    const { clients, archived } = await api('/api/overview')
+    const { clients, archived, unseen } = await api('/api/overview')
+    setUnseen(unseen || 0)
     renderArchived(archived || [], loadOverview)
     // Clients that need attention come first.
     clients.sort((a, b) => (b.counts.changes - a.counts.changes) || (b.counts.waiting - a.counts.waiting))
@@ -931,7 +984,13 @@ function eventCard(event, date) {
   const top = el('div', 'event-top')
   const stamp = el('time', 'event-time', when(date))
   stamp.dateTime = date.toISOString()
-  top.append(el('span', `badge ${KIND_BADGE[event.kind] || ''}`, KIND_LABEL[event.kind] || event.kind), el('strong', 'event-client', event.clientName), stamp)
+  top.append(el('span', `badge ${KIND_BADGE[event.kind] || ''}`, KIND_LABEL[event.kind] || event.kind), el('strong', 'event-client', event.clientName))
+  // An answer you have not opened yet. Opening it (below) is what marks it as seen.
+  if (event.fresh) {
+    card.classList.add('fresh')
+    top.append(el('span', 'new-tag', 'New'))
+  }
+  top.append(stamp)
   summary.append(top)
   if (event.text) {
     const flat = event.text.replace(/\s+/g, ' ').trim()
@@ -951,6 +1010,12 @@ function eventCard(event, date) {
     detail.replaceChildren(el('p', 'hint', 'Loading…'))
     try {
       detail.replaceChildren(...eventDetail(await api(`/api/history/${encodeURIComponent(event.id)}`)))
+      // The server has now recorded it as seen: drop the marker and lower the counts.
+      if (card.classList.contains('fresh')) {
+        card.classList.remove('fresh')
+        card.querySelector('.new-tag')?.remove()
+        setUnseen(unseenTotal - 1)
+      }
     } catch (err) {
       loaded = false
       detail.replaceChildren(el('p', 'hint', err.message))
@@ -1126,8 +1191,14 @@ async function checkForChanges() {
     const { pulse } = await api('/api/overview/pulse')
     const first = seenPulse === null
     if (pulse !== seenPulse) {
+      // The last part is how many answers are still new. When only that moved (you
+      // opened one here or on another device), update the client rows but leave an
+      // open History entry alone.
+      const cut = (p) => (p ? p.slice(0, p.lastIndexOf('.')) : null)
+      const onlyUnseen = !first && cut(pulse) === cut(seenPulse)
       seenPulse = pulse
-      if (!first) await refresh()
+      if (onlyUnseen) await loadOverview()
+      else if (!first) await refresh()
     }
   } catch {
     // A dropped connection: try again on the next tick.

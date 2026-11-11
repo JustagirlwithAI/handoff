@@ -202,3 +202,44 @@ test('the same words sent twice within two minutes count as one send', needsDb, 
     await db.deleteClient(owner, client.id)
   }
 })
+
+test('a client answer is "new" until the manager opens it; the manager\'s own actions never are', needsDb, async () => {
+  const owner = `life-new-${Date.now()}`
+  const other = `life-new-other-${Date.now()}`
+  const { client } = await db.createClient(owner, `LifeNew ${Date.now()}`)
+  try {
+    const shareId = await db.createShare(owner, client.id, 'lifenew0001', snap('A draft'))
+    // sharing a draft is the manager's own action: not new
+    assert.equal((await db.listFreshEvents(owner)).length, 0)
+
+    await db.recordDecision(shareId, { status: 'changes', feedback: 'Make it shorter', noteSaved: true })
+    await db.recordDecision(shareId, { status: 'approved', feedback: 'Love it', noteSaved: true })
+    const sub = await db.createSubmission(client.id, { title: 'Menu', text: 'New menu', details: '', timing: '', date: '', photos: [] })
+    await db.finishSubmission(sub, { ideaId: 'idea-new' })
+
+    // every client answer counts on its own: a request, an approval, new content
+    const fresh = await db.listFreshEvents(owner)
+    assert.deepEqual(fresh.map((f) => f.kind).sort(), ['approved', 'changes', 'submitted'])
+    assert.equal((await db.listEvents(owner)).filter((e) => e.fresh).length, 3)
+    assert.equal((await db.listFreshEvents(other)).length, 0)
+
+    // the pulse moves when an entry is opened, so other screens catch up
+    const before = await db.pulseForOwner(owner)
+    // another manager cannot mark it as seen
+    await db.markEventSeen(other, fresh[0].id)
+    assert.equal((await db.listFreshEvents(owner)).length, 3)
+    await db.markEventSeen(owner, fresh[0].id)
+    assert.equal((await db.listFreshEvents(owner)).length, 2)
+    assert.notEqual(await db.pulseForOwner(owner), before)
+
+    // the same entry can be opened again without changing anything
+    await db.markEventSeen(owner, fresh[0].id)
+    assert.equal((await db.listFreshEvents(owner)).length, 2)
+
+    // a second request after an updated version is a new entry, new again
+    await db.recordDecision(shareId, { status: 'changes', feedback: 'Still too long', noteSaved: true })
+    assert.equal((await db.listFreshEvents(owner)).length, 3)
+  } finally {
+    await db.deleteClient(owner, client.id)
+  }
+})
