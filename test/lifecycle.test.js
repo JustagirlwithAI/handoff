@@ -180,3 +180,25 @@ test('a client becomes a "working client" by sending content, or by being shared
     await db.deleteClient(owner, b.id)
   }
 })
+
+test('the same words sent twice within two minutes count as one send', needsDb, async () => {
+  const owner = `life-dup-${Date.now()}`
+  const { client } = await db.createClient(owner, `LifeDup ${Date.now()}`)
+  try {
+    const s = { title: 'Menu', text: 'New autumn menu', details: '', timing: '', date: '', photos: [] }
+    assert.equal(await db.hasRecentDuplicate(client.id, s), false)
+
+    // one that never reached Buffer is not a duplicate: the client should be able to retry it
+    const failed = await db.createSubmission(client.id, s)
+    await db.finishSubmission(failed, { error: 'Buffer down' })
+    assert.equal(await db.hasRecentDuplicate(client.id, s), false)
+
+    const ok = await db.createSubmission(client.id, s)
+    await db.finishSubmission(ok, { ideaId: 'idea-dup' })
+    assert.equal(await db.hasRecentDuplicate(client.id, s), true)
+    // different words are a new send
+    assert.equal(await db.hasRecentDuplicate(client.id, { ...s, text: 'Something else' }), false)
+  } finally {
+    await db.deleteClient(owner, client.id)
+  }
+})

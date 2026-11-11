@@ -15,11 +15,19 @@ function showBanner(message) {
 }
 
 async function post(path, body) {
-  const res = await fetch(api(path), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+  let res
+  try {
+    res = await fetch(api(path), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  } catch {
+    // No reply at all: the browser calls this "Failed to fetch". Say it in plain words.
+    const err = new Error("We couldn't reach Handoff. Please check your connection and try again.")
+    err.noReply = true
+    throw err
+  }
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || `Something went wrong (${res.status})`)
   return data
@@ -45,12 +53,18 @@ async function uploadPhoto(file) {
   form.append('signature', sig.signature)
   form.append('folder', sig.folder)
   form.append('allowed_formats', sig.allowed_formats)
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(sig.cloudName)}/image/upload`, {
-    method: 'POST',
-    body: form,
-  })
+  const failed = `We couldn't upload "${file.name}". Nothing was sent, and your words are still here. Check your connection, then press Send to try again (a smaller photo helps too).`
+  let res
+  try {
+    res = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(sig.cloudName)}/image/upload`, {
+      method: 'POST',
+      body: form,
+    })
+  } catch {
+    throw new Error(failed)
+  }
   const data = await res.json().catch(() => ({}))
-  if (!res.ok || !data.secure_url) throw new Error(`Could not upload ${file.name}. ${data.error?.message || ''}`.trim())
+  if (!res.ok || !data.secure_url) throw new Error(failed)
   return data.secure_url
 }
 
@@ -564,10 +578,12 @@ $('submit-form').addEventListener('submit', async (event) => {
   send.disabled = true
   send.textContent = files.length ? 'Uploading photos…' : 'Sending…'
   $('f-result').hidden = true
+  let sending = false
   try {
     const photos = []
     for (const file of files) photos.push(await uploadPhoto(file))
     send.textContent = 'Sending…'
+    sending = true
     await post('/submissions', {
       title: $('f-title').value,
       text: $('f-text').value,
@@ -585,7 +601,10 @@ $('submit-form').addEventListener('submit', async (event) => {
     if (working) $('send-box').open = false
     route()
   } catch (err) {
-    showResult(false, err.message)
+    // The text itself was in flight when the reply went missing, so it may have arrived.
+    showResult(false, err.noReply && sending
+      ? "We're not sure this went through. Before sending again, open History or ask your manager. If it isn't there, press Send again: your words are still here."
+      : err.message)
   } finally {
     send.disabled = false
     send.textContent = 'Send'
