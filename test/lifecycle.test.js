@@ -243,3 +243,38 @@ test('a client answer is "new" until the manager opens it; the manager\'s own ac
     await db.deleteClient(owner, client.id)
   }
 })
+
+test('opening a client marks all their new answers seen; dismissing lines marks only those, and only for the owner', needsDb, async () => {
+  const owner = `life-seen-${Date.now()}`
+  const other = `life-seen-other-${Date.now()}`
+  const a = (await db.createClient(owner, `LifeSeenA ${Date.now()}`)).client
+  const b = (await db.createClient(owner, `LifeSeenB ${Date.now()}`)).client
+  try {
+    for (const c of [a, b]) {
+      const s = await db.createShare(owner, c.id, `lifeseen${c.id.slice(0, 6)}`, snap('A draft'))
+      await db.recordDecision(s, { status: 'approved', feedback: null, noteSaved: true })
+      await db.recordDecision(s, { status: 'changes', feedback: 'Shorter', noteSaved: true })
+    }
+    const all = await db.listFreshEvents(owner)
+    assert.equal(all.length, 4)
+
+    // dismissing two specific lines
+    const ids = all.filter((f) => f.client_id === a.id).map((f) => String(f.id))
+    await db.markEventsSeen(other, ids) // someone else cannot
+    assert.equal((await db.listFreshEvents(owner)).length, 4)
+    await db.markEventsSeen(owner, [ids[0]])
+    assert.equal((await db.listFreshEvents(owner)).length, 3)
+
+    // opening client B clears only B's
+    await db.markClientSeen(other, b.id) // someone else cannot
+    assert.equal((await db.listFreshEvents(owner)).length, 3)
+    await db.markClientSeen(owner, b.id)
+    const left = await db.listFreshEvents(owner)
+    assert.equal(left.length, 1)
+    assert.equal(left[0].client_id, a.id)
+    assert.deepEqual(await db.markEventsSeen(owner, []), undefined) // nothing to do is fine
+  } finally {
+    await db.deleteClient(owner, a.id)
+    await db.deleteClient(owner, b.id)
+  }
+})

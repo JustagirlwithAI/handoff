@@ -532,7 +532,7 @@ const seenRows = new Set()
 const MAX_ANSWER_LINES = 3
 
 // One line on a client row: an icon, a bold label, and the client's own words in quotes.
-function answerLine(kind, label, quote) {
+function answerLine(kind, label, quote, onDismiss) {
   const line = el('div', `answer ${kind}`)
   line.append(el('span', 'answer-icon', kind === 'chg' ? '✎' : kind === 'ok' ? '✓' : '+'))
   const text = el('span', 'answer-text')
@@ -540,16 +540,29 @@ function answerLine(kind, label, quote) {
   if (quote) text.append(` ${quote.lead}"${quote.text}"`)
   line.append(text)
   if (kind === 'chg') line.classList.add('change-line')
+  if (onDismiss) {
+    // Tapping the line (or its ✕) means "seen it". It must not also open the client row.
+    line.classList.add('dismissable')
+    const x = el('span', 'answer-x', '✕')
+    x.setAttribute('role', 'button')
+    x.setAttribute('aria-label', 'Dismiss')
+    line.append(x)
+    line.addEventListener('click', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      onDismiss()
+    })
+  }
   return line
 }
 
-function answerLines(client, fresh) {
+function answerLines(client, fresh, dismiss) {
   const lines = []
   const latest = client.shares.find((s) => s.status === 'changes' && s.feedback)
   if (latest) lines.push(answerLine('chg', 'Changes requested:', { lead: '', text: latest.feedback }))
   for (const f of fresh) {
-    if (f.kind === 'approved') lines.push(answerLine('ok', 'Approved', f.comment ? { lead: '· Note: ', text: f.comment } : null))
-    else if (f.kind === 'submitted') lines.push(answerLine('sent', 'Sent new content:', { lead: '', text: f.text || 'New content' }))
+    if (f.kind === 'approved') lines.push(answerLine('ok', 'Approved', f.comment ? { lead: '· Note: ', text: f.comment } : null, () => dismiss(f)))
+    else if (f.kind === 'submitted') lines.push(answerLine('sent', 'Sent new content:', { lead: '', text: f.text || 'New content' }, () => dismiss(f)))
   }
   if (lines.length <= MAX_ANSWER_LINES) return lines
   const hidden = lines.length - MAX_ANSWER_LINES
@@ -563,16 +576,48 @@ function clientCard(client, reload) {
   }
   const card = el('details', 'client')
   card.open = openRows.has(client.id)
+
+  // What is new from this client. Opening the row, or tapping a line, means "seen".
+  const fresh = [...(client.fresh || [])]
+  let tag = null
+  let box = null
+  const summary = el('summary')
+  const drawFresh = () => {
+    card.classList.toggle('fresh', fresh.length > 0)
+    if (tag) tag.textContent = `${fresh.length} new`
+    if (tag && !fresh.length) { tag.previousSibling?.remove(); tag.remove(); tag = null }
+    if (box) {
+      box.replaceChildren(...answerLines(client, fresh, dismiss))
+      if (!box.children.length) { box.remove(); box = null }
+    }
+  }
+  const saveSeen = (call, count) => {
+    setUnseen(unseenTotal - count)
+    call.catch(() => {}) // if it did not save, the next refresh shows it as new again
+  }
+  const dismiss = (f) => {
+    fresh.splice(fresh.indexOf(f), 1)
+    drawFresh()
+    saveSeen(api('/api/events/seen', { method: 'POST', body: JSON.stringify({ ids: [f.id] }) }), 1)
+  }
   card.addEventListener('toggle', () => (card.open ? openRows.add(client.id) : openRows.delete(client.id)))
+  // Only a tap by the manager counts as seeing it. A row that opens by itself (a new
+  // client with nothing shared yet) does not, so what they sent still stands out.
+  summary.addEventListener('click', () => {
+    if (card.open || !fresh.length) return // this tap is closing it, or nothing is new
+    const count = fresh.length
+    fresh.length = 0
+    drawFresh()
+    saveSeen(api(`/api/clients/${client.id}/seen`, { method: 'POST' }), count)
+  })
 
   // The row you tap: name (with when they last opened their link), a count per
   // status, and a chevron.
-  const summary = el('summary')
   const nameCell = el('span', 'client-name', client.name)
-  const fresh = client.fresh || []
   if (fresh.length) {
     card.classList.add('fresh')
-    nameCell.append(' ', el('span', 'new-tag', `${fresh.length} new`))
+    tag = el('span', 'new-tag', `${fresh.length} new`)
+    nameCell.append(' ', tag)
   }
   nameCell.append(el('small', 'seen', seenText(client)))
   summary.append(nameCell)
@@ -588,9 +633,9 @@ function clientCard(client, reload) {
   // What the client said, visible even when the row is closed. The newest change
   // request stays until an updated version is sent. Approvals and new content show
   // only while they are new, and go away once the entry has been opened in History.
-  const answers = answerLines(client, fresh)
+  const answers = answerLines(client, fresh, dismiss)
   if (answers.length) {
-    const box = el('div', 'answers')
+    box = el('div', 'answers')
     box.append(...answers)
     summary.append(box)
   }
