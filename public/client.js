@@ -279,10 +279,18 @@ function reviewCard(share) {
   plan.textContent = due && !Number.isNaN(due.getTime()) ? `Planned for ${when(due)}` : 'Not scheduled yet'
   card.append(plan)
 
+  // A label that stays visible (a placeholder disappears as soon as they type).
+  const noteLabel = document.createElement('p')
+  noteLabel.className = 'note-label'
+  noteLabel.textContent = 'Add a note'
+  const noteHelp = document.createElement('p')
+  noteHelp.className = 'hint note-help'
+  noteHelp.textContent = 'Needed if you request changes. Optional if you approve.'
   const comment = document.createElement('textarea')
   comment.rows = 3
   comment.maxLength = 1000
-  comment.placeholder = 'What should change? (required for "Request changes", optional for "Approve")'
+  comment.placeholder = 'e.g. Please make it shorter, or: Love it, thank you!'
+  comment.setAttribute('aria-label', 'Add a note')
   const message = document.createElement('div')
   message.className = 'result'
   message.hidden = true
@@ -299,8 +307,15 @@ function reviewCard(share) {
   changes.textContent = 'Request changes'
 
   const decide = async (decision) => {
-    approve.disabled = changes.disabled = true
     message.hidden = true
+    if (decision === 'changes' && !comment.value.trim()) {
+      message.className = 'result bad'
+      message.textContent = 'Tell us what to change, so your manager knows what to fix.'
+      message.hidden = false
+      comment.focus()
+      return
+    }
+    approve.disabled = changes.disabled = true
     try {
       await post(`/shares/${encodeURIComponent(share.id)}/decision`, { decision, comment: comment.value })
       await loadReviews()
@@ -319,7 +334,8 @@ function reviewCard(share) {
   approve.addEventListener('click', () => decide('approved'))
   changes.addEventListener('click', () => decide('changes'))
   actions.append(approve, changes)
-  card.append(comment, actions, message)
+  comment.addEventListener('input', () => { if (!message.hidden && message.className === 'result bad') message.hidden = true })
+  card.append(noteLabel, noteHelp, comment, actions, message)
   return card
 }
 
@@ -394,19 +410,19 @@ const KIND_LABEL = {
   shared: 'Sent to you',
   updated: 'Updated version received',
   approved: 'You approved',
-  changes: 'You asked for changes',
+  changes: 'Changes requested',
   submitted: 'You sent content',
 }
 const KIND_BADGE = { shared: '', updated: 'waiting', approved: 'approved', changes: 'changes', submitted: '' }
-const COMMENT_LEAD = { approved: 'You added: ', changes: 'You asked: ', updated: 'What changed: ' }
+const COMMENT_LEAD = { approved: 'Note: ', changes: 'Changes requested: ', updated: 'What changed: ' }
 const DETAIL_LABEL = {
   shared: 'What was sent to you',
   updated: 'The updated version',
   approved: 'What you approved',
-  changes: 'The post you asked changes on',
+  changes: 'The post changes were requested on',
   submitted: 'What you sent',
 }
-const FILTERS = [['', 'All'], ['approved', 'Approved'], ['changes', 'Changes I asked for']]
+const FILTERS = [['', 'All'], ['approved', 'Approved'], ['changes', 'Changes requested']]
 
 let currentView = 'home'
 let historyKind = ''

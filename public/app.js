@@ -289,7 +289,7 @@ function shareRow(share, reload) {
   const flat = share.text.replace(/\s+/g, ' ').trim()
   item.append(top, el('div', 'hint', `[${share.service}] ${flat.length > 90 ? `${flat.slice(0, 89).trimEnd()}…` : flat}`))
   item.append(el('div', 'when', timeline(share)))
-  if (share.feedback) item.append(el('div', 'feedback', `They asked: "${share.feedback}"`))
+  if (share.feedback) item.append(el('div', 'feedback', `${share.status === 'changes' ? 'Changes requested' : 'Note'}: "${share.feedback}"`))
   if (share.status !== 'waiting' && share.noteSaved === false) {
     item.append(el('div', 'hint', 'Saved here, but the Buffer Note could not be added.'))
   }
@@ -833,7 +833,7 @@ const KIND_LABEL = {
   nudged: 'Reminder sent',
 }
 const KIND_BADGE = { approved: 'approved', changes: 'changes', updated: 'waiting', shared: '', submitted: '', nudged: '' }
-const COMMENT_LEAD = { approved: 'They added: ', changes: 'They asked: ', updated: 'What changed: ' }
+const COMMENT_LEAD = { approved: 'Note: ', changes: 'Changes requested: ', updated: 'What changed: ' }
 const FILTERS = [['', 'All'], ['approved', 'Approved'], ['changes', 'Changes requested'], ['updated', 'Updates sent']]
 
 let historyKind = ''
@@ -862,7 +862,7 @@ function renderFilters() {
 // What the opened entry is showing, in plain words.
 const DETAIL_LABEL = {
   approved: 'Exactly what was approved',
-  changes: 'The post they asked changes on',
+  changes: 'The post changes were requested on',
   updated: 'The updated version that was sent',
   shared: 'What was shared with them',
   submitted: 'Exactly what they sent',

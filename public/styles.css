@@ -653,3 +653,7 @@ details.folded > .card { margin: 0; border: 0; box-shadow: none; padding: 1rem 0
 .pv-actions { display: flex; gap: 0.6rem; margin-top: 0.8rem; }
 .pv-actions .btn { flex: 1 1 0; }
 @media (prefers-reduced-motion: reduce) { .thumb-bar::after { animation: none; width: 100%; } }
+
+/* The note box on a review card: a label that stays visible. */
+.note-label { margin: 0.9rem 0 0; font-weight: 600; font-size: 0.9rem; }
+.note-help { margin: 0.1rem 0 0.4rem; }
