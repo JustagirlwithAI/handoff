@@ -76,11 +76,15 @@
                   <textarea id="f-text" rows="5" maxlength="2000" required placeholder="What should the post say?"></textarea>
                 </label>
 
-                <label id="photo-label" hidden>
-                  <span>Photos <span class="opt">optional, up to 4</span></span>
+                <div id="photo-label" class="photos" hidden>
+                  <label for="f-photos">
+                    <span>Photos <span class="opt">optional, up to 4</span></span>
+                  </label>
                   <input id="f-photos" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple />
+                  <div id="photo-thumbs" class="thumbs" hidden></div>
+                  <div id="photo-notes" class="photo-notes"></div>
                   <span id="photo-hint" class="hint"></span>
-                </label>
+                </div>
 
                 <label>
                   <span>Extra details <span class="opt">optional</span></span>
@@ -113,6 +117,17 @@
 
       <footer class="colophon"><a href="/privacy.html">Privacy</a></footer>
     </main>
+    <dialog id="photo-view" class="photo-view" aria-label="Photo preview">
+      <div class="pv-head"><span id="pv-title"></span><button id="pv-close" class="link" type="button">Close</button></div>
+      <img id="pv-img" alt="" />
+      <p id="pv-meta" class="hint"></p>
+      <p id="pv-note" class="hint"></p>
+      <div class="pv-actions">
+        <button id="pv-keep" class="btn" type="button">Keep it</button>
+        <button id="pv-remove" class="btn secondary" type="button">Remove</button>
+      </div>
+    </dialog>
+
     <script src="/client.js" type="module"></script>
   </body>
 </html>

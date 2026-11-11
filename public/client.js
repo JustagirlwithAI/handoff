@@ -45,7 +45,13 @@ function when(value) {
 
 // Sends one photo straight to Cloudinary using a one-time signature from us.
 async function uploadPhoto(file) {
-  const sig = await post('/upload-signature', {})
+  let sig
+  try {
+    sig = await post('/upload-signature', {})
+  } catch (err) {
+    // No reply from Handoff is a connection problem; anything else keeps its own message.
+    throw err.noReply ? Object.assign(new Error('connection'), { photoFailed: true }) : err
+  }
   const form = new FormData()
   form.append('file', file)
   form.append('api_key', sig.apiKey)
@@ -53,7 +59,7 @@ async function uploadPhoto(file) {
   form.append('signature', sig.signature)
   form.append('folder', sig.folder)
   form.append('allowed_formats', sig.allowed_formats)
-  const failed = `We couldn't upload "${file.name}". Nothing was sent, and your words are still here. Check your connection, then press Send to try again (a smaller photo helps too).`
+  const failed = Object.assign(new Error('upload'), { photoFailed: true })
   let res
   try {
     res = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(sig.cloudName)}/image/upload`, {
@@ -61,21 +67,150 @@ async function uploadPhoto(file) {
       body: form,
     })
   } catch {
-    throw new Error(failed)
+    throw failed
   }
   const data = await res.json().catch(() => ({}))
-  if (!res.ok || !data.secure_url) throw new Error(failed)
+  if (!res.ok || !data.secure_url) throw failed
   return data.secure_url
 }
 
-function checkPhotos(files) {
-  if (files.length > MAX_PHOTOS) return `Please choose up to ${MAX_PHOTOS} photos.`
-  for (const file of files) {
-    if (!PHOTO_TYPES.includes(file.type)) return `${file.name} is not a JPG, PNG, WebP or GIF image.`
-    if (file.size > MAX_PHOTO_BYTES) return `${file.name} is larger than 8 MB.`
-  }
+/* ---------------------------------------------------------------- photos */
+// The photos the client has chosen, shown as small previews before anything is
+// sent. Each is { file, url (preview), width, height, problem, warning, status, uploaded }.
+const SMALL_SIDE = 800 // longest side in pixels under which a photo may look blurry
+let chosen = []
+let sendingNow = false
+let retryLabel = 'Send' // becomes "Try again" after a failed attempt
+
+function describeProblem(file) {
+  if (!PHOTO_TYPES.includes(file.type)) return 'Not a JPG, PNG, WebP or GIF'
+  if (file.size > MAX_PHOTO_BYTES) return `Over 8 MB (${(file.size / 1048576).toFixed(1)} MB)`
   return ''
 }
+
+function inspectPhoto(item) {
+  item.problem = describeProblem(item.file)
+  if (item.problem) return Promise.resolve()
+  return new Promise((resolve) => {
+    const probe = new Image()
+    probe.onload = () => {
+      item.width = probe.naturalWidth
+      item.height = probe.naturalHeight
+      if (Math.max(item.width, item.height) < SMALL_SIDE) item.warning = 'Small, may look blurry'
+      resolve()
+    }
+    probe.onerror = () => { item.problem = "Can't be opened"; resolve() }
+    probe.src = item.url
+  })
+}
+
+function removePhoto(item) {
+  URL.revokeObjectURL(item.url)
+  chosen = chosen.filter((p) => p !== item)
+  renderPhotos()
+}
+
+function clearPhotos() {
+  for (const item of chosen) URL.revokeObjectURL(item.url)
+  chosen = []
+  renderPhotos()
+}
+
+const STATUS_LABEL = { waiting: 'Waiting', uploading: 'Uploading…', done: 'Done', failed: "Didn't upload" }
+
+function renderPhotos() {
+  const box = $('photo-thumbs')
+  const notes = $('photo-notes')
+  box.replaceChildren()
+  notes.replaceChildren()
+  box.hidden = chosen.length === 0
+  chosen.forEach((item, index) => {
+    const n = index + 1
+    const bad = item.problem || item.status === 'failed'
+    const cell = document.createElement('div')
+    cell.className = `thumb${bad ? ' bad' : ''}`
+
+    const open = document.createElement('button')
+    open.type = 'button'
+    open.className = 'thumb-img'
+    open.setAttribute('aria-label', `Look at photo ${n} larger`)
+    const img = document.createElement('img')
+    // A file the browser cannot draw (an unsupported type, a damaged photo) gets a plain tile.
+    if (PHOTO_TYPES.includes(item.file.type) && item.problem !== "Can't be opened") {
+      img.src = item.url
+      img.alt = ''
+      open.append(img)
+    }
+    open.addEventListener('click', () => viewPhoto(item))
+    cell.append(open)
+
+    const tag = item.problem ? "Can't use" : item.status ? STATUS_LABEL[item.status] : item.warning ? 'Small' : ''
+    if (tag) {
+      const label = document.createElement('span')
+      label.className = `thumb-tag${item.problem || item.status === 'failed' ? ' err' : item.status === 'done' ? ' ok' : item.warning && !item.status ? ' wait' : ''}`
+      label.textContent = tag
+      cell.append(label)
+    }
+    if (item.status === 'uploading') {
+      const bar = document.createElement('span')
+      bar.className = 'thumb-bar'
+      cell.append(bar)
+    }
+    if (!sendingNow) {
+      const x = button('✕', 'thumb-x', () => removePhoto(item))
+      x.setAttribute('aria-label', `Remove photo ${n}`)
+      cell.append(x)
+    }
+    box.append(cell)
+
+    const line = (cls, text) => {
+      const p = document.createElement('p')
+      p.className = `photo-note ${cls}`
+      p.textContent = text
+      notes.append(p)
+    }
+    if (item.problem) line('err', `Photo ${n}: ${item.problem}. Remove it and choose another.`)
+    else if (item.warning && !item.status) line('wait', `Photo ${n} is small and may look blurry. You can still send it.`)
+  })
+}
+
+function button(text, cls, onClick) {
+  const b = document.createElement('button')
+  b.type = 'button'
+  b.className = cls
+  b.textContent = text
+  b.addEventListener('click', onClick)
+  return b
+}
+
+async function addPhotos(files) {
+  const room = MAX_PHOTOS - chosen.length
+  const fresh = files.slice(0, Math.max(room, 0))
+  $('photo-hint').textContent = files.length > fresh.length ? `You can add up to ${MAX_PHOTOS} photos. The rest were left out.` : ''
+  const items = fresh.map((file) => ({ file, url: URL.createObjectURL(file), status: '', uploaded: '' }))
+  chosen.push(...items)
+  renderPhotos()
+  await Promise.all(items.map(inspectPhoto))
+  renderPhotos()
+}
+
+// The larger view: the client can keep the photo or take it out.
+const viewer = $('photo-view')
+let viewing = null
+function viewPhoto(item) {
+  if (sendingNow) return
+  viewing = item
+  const n = chosen.indexOf(item) + 1
+  $('pv-title').textContent = `Photo ${n} of ${chosen.length}`
+  $('pv-img').src = item.url
+  $('pv-meta').textContent = [item.width && `${item.width} × ${item.height}`, `${(item.file.size / 1048576).toFixed(1)} MB`].filter(Boolean).join(' · ')
+  $('pv-note').textContent = item.problem || (item.warning ? 'Small photo, may look blurry in the post.' : '')
+  viewer.showModal()
+}
+$('pv-close').addEventListener('click', () => viewer.close())
+$('pv-keep').addEventListener('click', () => viewer.close())
+$('pv-remove').addEventListener('click', () => { viewer.close(); if (viewing) removePhoto(viewing) })
+viewer.addEventListener('click', (event) => { if (event.target === viewer) viewer.close() })
 
 function showResult(ok, message) {
   const box = $('f-result')
@@ -565,23 +700,45 @@ async function start() {
 
 $('f-photos').addEventListener('change', () => {
   const files = [...$('f-photos').files]
-  $('photo-hint').textContent = checkPhotos(files) || (files.length ? `${files.length} photo${files.length > 1 ? 's' : ''} selected` : '')
+  // Cleared so the same photo can be chosen again after removing it.
+  $('f-photos').value = ''
+  if (files.length) addPhotos(files)
 })
 
 $('submit-form').addEventListener('submit', async (event) => {
   event.preventDefault()
   const send = $('f-send')
-  const files = $('photo-label').hidden ? [] : [...$('f-photos').files]
-  const problem = checkPhotos(files)
-  if (problem) return showResult(false, problem)
+  const items = $('photo-label').hidden ? [] : chosen
+  const bad = items.findIndex((p) => p.problem)
+  if (items.some((p) => !p.problem && !p.width)) return showResult(false, 'One moment, checking your photos. Press Send again in a second.')
+  if (bad !== -1) return showResult(false, `Remove photo ${bad + 1} first: ${items[bad].problem}.`)
 
   send.disabled = true
-  send.textContent = files.length ? 'Uploading photos…' : 'Sending…'
+  send.textContent = items.length ? 'Uploading photos…' : 'Sending…'
   $('f-result').hidden = true
   let sending = false
+  sendingNow = true
+  items.forEach((p) => { p.status = p.uploaded ? 'done' : 'waiting' })
+  renderPhotos()
   try {
     const photos = []
-    for (const file of files) photos.push(await uploadPhoto(file))
+    for (const [index, item] of items.entries()) {
+      if (!item.uploaded) {
+        item.status = 'uploading'
+        renderPhotos()
+        $('f-send').textContent = `Uploading photo ${index + 1} of ${items.length}…`
+        try {
+          item.uploaded = await uploadPhoto(item.file)
+        } catch (err) {
+          item.status = 'failed'
+          err.photoNumber = index + 1
+          throw err
+        }
+        item.status = 'done'
+        renderPhotos()
+      }
+      photos.push(item.uploaded)
+    }
     send.textContent = 'Sending…'
     sending = true
     await post('/submissions', {
@@ -594,6 +751,9 @@ $('submit-form').addEventListener('submit', async (event) => {
     })
     $('submit-form').reset()
     $('photo-hint').textContent = ''
+    sendingNow = false
+    retryLabel = 'Send'
+    clearPhotos()
     showResult(true, 'Sent! Your manager has received it. You can send more any time.')
     // Sending content makes them a working client: the page switches to the tabs,
     // and the form becomes the drop-down, folded away again after each send.
@@ -602,12 +762,19 @@ $('submit-form').addEventListener('submit', async (event) => {
     route()
   } catch (err) {
     // The text itself was in flight when the reply went missing, so it may have arrived.
-    showResult(false, err.noReply && sending
-      ? "We're not sure this went through. Before sending again, open History or ask your manager. If it isn't there, press Send again: your words are still here."
-      : err.message)
+    retryLabel = 'Try again'
+    showResult(false, err.photoFailed
+      ? `Photo ${err.photoNumber} didn't finish uploading. The connection may be weak. Nothing was sent.`
+      : err.noReply && sending
+        ? "We're not sure this went through. Before sending again, open History or ask your manager. If it isn't there, press Send again: your words are still here."
+        : err.message)
   } finally {
+    sendingNow = false
+    // Photos that already uploaded keep their tick, so a retry only redoes the rest.
+    chosen.forEach((p) => { if (p.status !== 'failed') p.status = p.uploaded ? 'done' : '' })
+    renderPhotos()
     send.disabled = false
-    send.textContent = 'Send'
+    send.textContent = retryLabel
   }
 })
 
