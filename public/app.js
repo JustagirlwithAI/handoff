@@ -224,16 +224,18 @@ $('client-form').addEventListener('submit', async (event) => {
     // Straight after the link: which Buffer channels do you post to for them? A
     // one-time choice that makes "Share a draft" show their drafts first.
     client.channelIds = []
-    const picker = channelPicker(client, {
-      intro: `Which Buffer channels do you post to for ${client.name}? Choose them once, and Share a draft will show their drafts first.`,
-      onDone: (saved) => {
-        picker.replaceChildren(el('p', 'picker-intro', saved
-          ? 'Channels saved. You can change them any time from their row.'
-          : 'No problem. You can choose them any time from their row.'))
-        loadOverview()
-      },
-    })
-    $('client-link').append(el('hr', 'box-sep'), picker)
+    const prompt = el('div', 'channel-prompt')
+    prompt.append(
+      el('span', '', 'Which channels do you post to for them?'),
+      button('Choose channels', 'btn small secondary', () => openChannelDialog(client, {
+        onDone: (saved) => {
+          if (!saved) return // the prompt stays, so they can choose later
+          prompt.replaceChildren(el('span', '', 'Channels saved. You can change them any time from their row.'))
+          loadOverview()
+        },
+      })),
+    )
+    $('client-link').append(prompt)
     await loadOverview()
   } catch (err) {
     showError(err.message)
@@ -390,6 +392,27 @@ function channelPicker(client, { intro, saveLabel = 'Save channels', skipLabel =
     save.disabled = true
   })
   return wrap
+}
+
+// The pop-up for choosing a client's Buffer channels. Used right after adding a client
+// and from the client's row. It sits on the page itself, so a refresh behind it cannot
+// wipe a choice in progress. Closing it any way counts as "skip".
+function openChannelDialog(client, { onDone } = {}) {
+  const dialog = el('dialog', 'photo-view channel-dialog')
+  dialog.setAttribute('aria-label', `Channels for ${client.name}`)
+  const head = el('div', 'picker-head')
+  head.append(el('strong', '', `Channels for ${client.name}`), button('Close', 'link', () => dialog.close()))
+  const picker = channelPicker(client, {
+    intro: 'Choose them once. Share a draft will show their drafts first.',
+    onDone: (saved) => {
+      dialog.close()
+      if (onDone) onDone(saved)
+    },
+  })
+  dialog.append(head, picker)
+  dialog.addEventListener('close', () => dialog.remove())
+  document.body.append(dialog)
+  dialog.showModal()
 }
 
 // What you see after "Share a draft": the client's channel drafts first, everything
@@ -665,25 +688,9 @@ function clientCard(client, reload) {
     actions.append(button(`${client.counts.approved} approved in History`, 'link', () => { location.hash = '#history' }))
   }
   // The Buffer channels you post to for this client: chosen once, changeable any time.
-  const channelEditor = el('div', 'channel-edit')
   actions.append(
     button(client.channelIds?.length ? `Channels (${client.channelIds.length})` : 'Choose channels', 'link', () => {
-      if (channelEditor.childElementCount) {
-        delete channelEditor.dataset.editing
-        channelEditor.replaceChildren()
-        return
-      }
-      channelEditor.dataset.editing = '1' // the page will not redraw over a choice in progress
-      channelEditor.append(channelPicker(client, {
-        intro: `Which Buffer channels do you post to for ${client.name}?`,
-        saveLabel: 'Save',
-        skipLabel: 'Cancel',
-        onDone: (saved) => {
-          delete channelEditor.dataset.editing
-          channelEditor.replaceChildren()
-          if (saved) reload()
-        },
-      }))
+      openChannelDialog(client, { onDone: (saved) => { if (saved) reload() } })
     }),
     button('New link', 'link', async () => {
       if (!confirm(`Make a new link for ${client.name}? The old link will stop working.`)) return
@@ -716,7 +723,7 @@ function clientCard(client, reload) {
       }
     }),
   )
-  body.append(actions, channelEditor)
+  body.append(actions)
   card.append(body)
   return card
 }
