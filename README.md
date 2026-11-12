@@ -1,8 +1,8 @@
 # Handoff
 
-**Client content in. Client approvals out. All through Buffer.**
+**Content in. Approvals out. All through Buffer.**
 
-Handoff is a small web app for social media managers who work with clients. The manager signs in with Buffer and creates a private link for each client. Through that link, with no login, the client can:
+Handoff is a small web app for anyone who publishes through Buffer on someone else's behalf, or needs someone's sign-off before a post goes out. You sign in with Buffer and create a private link for each client (for a creator, that might be a brand or sponsor). Through that link, with no login, the client can:
 
 1. **Send content**: text, photos, details and timing. It arrives in the manager's Buffer as an **Idea tagged with the client's name**.
 2. **Review posts**: when the manager turns that Idea into a draft in Buffer, they tap **Share a draft** to show it to the client. The post is written in the manager's own words, informed by what the client sent, and a draft is not always ready for client eyes, so nothing is ever shared without the manager's say-so. The client sees how it will look, then **approves it or requests changes**. Their answer is saved as a **Note on the post in Buffer**.
@@ -10,6 +10,25 @@ Handoff is a small web app for social media managers who work with clients. The 
 The manager gets one simple screen showing, per client, what is waiting, approved, or needs changes. She also gets a **push notification** when a client approves, asks for changes, or sends something new. Clients can turn on notifications too, so they hear when a post is ready or a revised version is waiting, with no chat app or email involved. After revising a post in Buffer, the manager clicks **Send updated version** to put the new version in front of the client.
 
 Live: https://handoff-nine-lemon.vercel.app
+
+## Who it's for
+
+Handoff suits anyone who works in Buffer and has to get content from, or approval of, someone who isn't in Buffer.
+
+| Who | How they use it | Why Handoff fits |
+| --- | --- | --- |
+| **Freelance social media managers** | One private link per client. Clients send ideas and photos, and approve drafts. | No client portal to build, and no emails to chase. Each client's card shows what is waiting. |
+| **Small agencies and studios** | The same, across a whole client list, with a record of every approval. | History keeps the exact version each client approved, with the date. That settles "I never said yes to that." |
+| **Creators working with brands** | A brand or sponsor sends a brief and assets through the link, then approves the post before it goes live. | The brand needs no Buffer account and no login, which makes approval faster. |
+| **Freelance writers, designers and video editors** | They prepare posts for a client and send them back for a yes or a list of changes. | The client answers on one page, and the answer lands as a Note on the post. |
+| **Virtual assistants and part-time marketers** | They post for a busy founder, who approves from a link on their phone. | The founder taps Approve in seconds. No app to install, no account to create. |
+
+What they all share:
+
+- **Nothing to sign up for.** The person on the other side only needs a link.
+- **It stays in Buffer.** Content arrives as a tagged Idea, and feedback arrives as a Note on the post.
+- **A clear record.** Every step has a date and time, and the approved version is kept exactly as it was.
+- **Light by design.** It doesn't replace Buffer. It covers the part that used to happen in email and chat.
 
 ## How it uses Buffer
 

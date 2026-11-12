@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Handoff",
   "short_name": "Handoff",
-  "description": "Client content in. Client approvals out. All through Buffer.",
+  "description": "Content in. Approvals out. All through Buffer.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
