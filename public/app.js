@@ -652,13 +652,12 @@ function clientCard(client, reload) {
   }
 
   const actions = el('div', 'actions')
-  if (client.counts.changes) {
-    const openBuffer = el('a', 'btn small', 'Open Buffer')
-    openBuffer.href = 'https://publish.buffer.com'
-    openBuffer.target = '_blank'
-    openBuffer.rel = 'noopener noreferrer'
-    actions.append(openBuffer)
-  }
+  // Always here, so it never moves or disappears (clearing a "new" line must not remove it).
+  const openBuffer = el('a', 'btn small', 'Open Buffer')
+  openBuffer.href = 'https://publish.buffer.com'
+  openBuffer.target = '_blank'
+  openBuffer.rel = 'noopener noreferrer'
+  actions.append(openBuffer)
   if (client.counts.waiting) {
     actions.append(button('Remind', 'btn small secondary', () => remind(client, reload)))
   }
